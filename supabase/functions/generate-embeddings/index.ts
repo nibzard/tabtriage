@@ -1,6 +1,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
-const session = new Deno.ai.Session('gte-small');
+// Create GTE-Small embedding session
+const session = new Supabase.ai.Session('gte-small');
 
 serve(async (req) => {
   try {
