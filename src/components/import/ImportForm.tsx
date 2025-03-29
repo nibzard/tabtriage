@@ -139,15 +139,16 @@ export function ImportForm({ onImportStart, onUpdateProgress }: ImportFormProps)
             batch.map(tab => tab.url));
           
           try {
-            addTabs(batch)
+            // Wait for addTabs to complete since it's now async
+            await addTabs(batch)
             
             // Update progress
             if (onUpdateProgress) {
               onUpdateProgress(Math.min(i + BATCH_SIZE, newTabs.length))
             }
             
-            // Small delay to show progress
-            await new Promise(resolve => setTimeout(resolve, 200))
+            // Smaller delay since the operation is already taking longer with awaiting
+            await new Promise(resolve => setTimeout(resolve, 100))
           } catch (batchError) {
             console.error(`Error processing batch at index ${i}:`, batchError)
             throw new Error(`Error in batch ${Math.floor(i/BATCH_SIZE) + 1}: ${batchError.message || 'Unknown error'}`)

@@ -31,12 +31,11 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     staleTime: 1000 * 60 * 5, // 5 minutes
   })
   
-  // Save tab mutation
+  // Save tab mutation with batched invalidation
   const saveTabMutation = useMutation({
     mutationFn: tabApi.saveTab,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tabs'] })
-    },
+    // We'll manually invalidate after all saves are complete
+    // to prevent multiple re-renders during batch operations
   })
   
   // Delete tab mutation
@@ -48,7 +47,7 @@ export function TabsProvider({ children }: { children: ReactNode }) {
   })
   
   // Add multiple tabs
-  const addTabs = useCallback((newTabs: Tab[]) => {
+  const addTabs = useCallback(async (newTabs: Tab[]) => {
     logger.info(`Adding ${newTabs.length} new tabs`)
     
     // Filter out duplicates based on URL
@@ -62,16 +61,25 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     
     logger.info(`${uniqueNewTabs.length} unique tabs will be added`)
     
-    // Optimistically update the UI
+    // Optimistically update the UI once - prevents multiple renders
     queryClient.setQueryData(['tabs'], (oldTabs: Tab[] = []) => [
       ...oldTabs,
       ...uniqueNewTabs,
     ])
     
-    // Save each tab to the server
-    uniqueNewTabs.forEach(tab => {
-      saveTabMutation.mutate(tab)
-    })
+    try {
+      // Save tabs to the server with Promise.all for better performance
+      const savePromises = uniqueNewTabs.map(tab => saveTabMutation.mutateAsync(tab))
+      await Promise.all(savePromises)
+      
+      // Now that all tabs are saved, invalidate the query once
+      logger.info(`All ${uniqueNewTabs.length} tabs saved successfully. Refreshing data.`)
+      queryClient.invalidateQueries({ queryKey: ['tabs'] })
+    } catch (error) {
+      logger.error('Error saving tabs:', error)
+      // Still invalidate to ensure UI is consistent
+      queryClient.invalidateQueries({ queryKey: ['tabs'] })
+    }
   }, [tabs, queryClient, saveTabMutation])
   
   // Update a tab
