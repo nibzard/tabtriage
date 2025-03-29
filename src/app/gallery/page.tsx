@@ -1,18 +1,28 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Header } from '@/components/Header'
 import { TabGallery } from '@/components/gallery/TabGallery'
 import { FilterPanel } from '@/components/gallery/FilterPanel'
+import SearchBar from '@/components/gallery/SearchBar'
 import { useTabsContext } from '@/context/TabsContext'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
+import { Tab } from '@/types/Tab'
 
 export default function GalleryPage() {
   // Use the new TabsContext
   const { tabs, keepTab, discardTab, assignToFolder, deleteTab, deleteAllDiscarded } = useTabsContext()
+  const searchParams = useSearchParams()
+  const queryParam = searchParams.get('q')
+  
   const [activeFilter, setActiveFilter] = useState('all')
-  const [searchTerm, setSearchTerm] = useState('')
+  const [searchTerm, setSearchTerm] = useState(queryParam || '')
+  const [searchResults, setSearchResults] = useState<Tab[]>([])
+  const [isSearching, setIsSearching] = useState(false)
+  const [semanticWeight, setSemanticWeight] = useState(1.0)
+  const [fullTextWeight, setFullTextWeight] = useState(1.0)
 
   // Filter tabs based on active filter
   const getFilteredTabs = () => {
@@ -45,6 +55,63 @@ export default function GalleryPage() {
     entertainment: tabs.filter(t => t.category === 'entertainment' && t.status === 'unprocessed').length,
     uncategorized: tabs.filter(t => t.category === 'uncategorized' && t.status === 'unprocessed').length,
   }
+
+  // Handle search using vector embeddings
+  const handleSearch = async (query: string) => {
+    setSearchTerm(query);
+    
+    if (!query) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+    
+    try {
+      setIsSearching(true);
+      
+      const response = await fetch(
+        `/api/tabs/search?q=${encodeURIComponent(query)}&fullTextWeight=${fullTextWeight}&semanticWeight=${semanticWeight}`
+      );
+      
+      if (!response.ok) {
+        throw new Error('Search failed');
+      }
+      
+      const results = await response.json();
+      setSearchResults(results);
+    } catch (error) {
+      console.error('Search error:', error);
+      toast.error('Search failed. Please try again.');
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+  
+  // Handle search weights change
+  const handleSearchWeightChange = (value: number) => {
+    // Value is between 0 and 2
+    // At 0: fullTextWeight=2, semanticWeight=0
+    // At 1: fullTextWeight=1, semanticWeight=1 (balanced)
+    // At 2: fullTextWeight=0, semanticWeight=2
+    const fullWeight = 2 - value;
+    const semWeight = value;
+    
+    setFullTextWeight(fullWeight);
+    setSemanticWeight(semWeight);
+    
+    // If there's an active search, refresh it with the new weights
+    if (searchTerm) {
+      handleSearch(searchTerm);
+    }
+  };
+  
+  // Effect to run search when URL query parameter changes
+  useEffect(() => {
+    if (queryParam) {
+      handleSearch(queryParam);
+    }
+  }, [queryParam]);
 
   // Check if there are any tabs
   const hasTabs = tabs.length > 0
@@ -79,6 +146,22 @@ export default function GalleryPage() {
       <Header />
 
       <div className="container mx-auto px-4 py-4">
+        {/* Search Bar */}
+        <div className="mb-6">
+          <SearchBar 
+            onSearch={handleSearch}
+            placeholder="Search tabs by content or meaning..."
+            initialQuery={searchTerm}
+            onSearchWeightChange={handleSearchWeightChange}
+          />
+          
+          {searchTerm && searchResults.length > 0 && (
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
+              Found {searchResults.length} results for "{searchTerm}"
+            </p>
+          )}
+        </div>
+        
         {/* Filter Panel - Now at top for both mobile and desktop */}
         <FilterPanel
           activeFilter={activeFilter}
@@ -90,13 +173,27 @@ export default function GalleryPage() {
         
         {/* Tab Gallery - Full width */}
         <div className="w-full">
-          <TabGallery
-            showingDiscarded={showingDiscarded}
-            filterStatus={activeFilter === 'all' ? 'unprocessed' : 
-                       activeFilter === 'kept' ? 'kept' : 
-                       activeFilter === 'discarded' ? 'discarded' : 'all'}
-            searchTerm={searchTerm}
-          />
+          {isSearching ? (
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-8 text-center">
+              <div className="animate-spin h-12 w-12 border-4 border-primary-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+              <p className="text-gray-600 dark:text-gray-300">Searching tabs...</p>
+            </div>
+          ) : searchTerm && searchResults.length > 0 ? (
+            // Show search results
+            <TabGallery
+              tabs={searchResults}
+              showingDiscarded={false}
+            />
+          ) : (
+            // Show regular filtered tabs
+            <TabGallery
+              showingDiscarded={showingDiscarded}
+              filterStatus={activeFilter === 'all' ? 'unprocessed' : 
+                         activeFilter === 'kept' ? 'kept' : 
+                         activeFilter === 'discarded' ? 'discarded' : 'all'}
+              searchTerm={searchTerm && searchResults.length === 0 ? searchTerm : ''}
+            />
+          )}
         </div>
         
         {/* Mobile actions - Fixed at bottom on small screens */}

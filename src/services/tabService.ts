@@ -3,6 +3,7 @@ import { Folder } from '@/types/Folder'
 import { captureScreenshot } from '@/services/screenshotService'
 import { fetchPageContent } from './pageContentService'
 import { generateSummaryWithAI } from './openaiService'
+import { generateTabEmbedding } from './embeddingService'
 import { logger } from '@/utils/logger'
 import { generateUUID } from '@/utils/uuid'
 

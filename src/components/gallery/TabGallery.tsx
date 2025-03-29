@@ -14,6 +14,7 @@ interface TabGalleryProps {
   filterStatus?: 'all' | 'unprocessed' | 'kept' | 'discarded'
   filterFolder?: string
   searchTerm?: string
+  tabs?: Tab[] // For direct tab injection from search results
 }
 
 export const TabGallery = memo(function TabGallery({
@@ -21,6 +22,7 @@ export const TabGallery = memo(function TabGallery({
   filterStatus = 'all',
   filterFolder,
   searchTerm = '',
+  tabs: providedTabs,
 }: TabGalleryProps) {
   // Context hooks
   const { 
@@ -48,8 +50,14 @@ export const TabGallery = memo(function TabGallery({
     setFolderMenuOpen
   } = useUIContext()
 
+  // Use provided tabs (e.g. from search results) or tabs from context
+  const tabsToFilter = providedTabs || tabs;
+  
   // Filter tabs based on criteria
-  const filteredTabs = tabs.filter(tab => {
+  const filteredTabs = tabsToFilter.filter(tab => {
+    // If we have providedTabs, we skip filtering as they're already filtered
+    if (providedTabs) return true;
+    
     // Filter by status
     if (filterStatus !== 'all' && tab.status !== filterStatus) {
       return false
@@ -60,7 +68,7 @@ export const TabGallery = memo(function TabGallery({
       return false
     }
     
-    // Filter by search term
+    // Filter by search term (client-side search when not using vector search)
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase()
       return (

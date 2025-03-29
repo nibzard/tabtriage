@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { Tab } from '@/types/Tab'
 import { Folder } from '@/types/Folder'
 import { logger } from '@/utils/logger'
+import { generateTabEmbedding } from '@/services/embeddingService'
 
 // Define database types
 export type TabRecord = {
@@ -347,6 +348,29 @@ export async function saveTabToDatabase(tab: Tab, userId: string): Promise<strin
         console.error('Error saving suggested folders:', folderError)
         // Continue even if folder saving fails
       }
+    }
+
+    // Generate and save embedding
+    try {
+      console.log(`Generating embedding for tab ${tab.id}`)
+      const embedding = await generateTabEmbedding(tab)
+      
+      if (embedding) {
+        const { error: embeddingError } = await supabase
+          .from('tabs')
+          .update({ embedding })
+          .eq('id', tab.id)
+          .eq('user_id', userId)
+          
+        if (embeddingError) {
+          console.error('Error saving embedding:', embeddingError)
+        } else {
+          console.log(`Embedding saved for tab ${tab.id}`)
+        }
+      }
+    } catch (embeddingError) {
+      console.error('Error generating embedding:', embeddingError)
+      // Continue even if embedding generation fails
     }
 
     logger.debug(`Tab saved successfully: ${tab.id}`)
