@@ -27,13 +27,57 @@ export async function GET(request: NextRequest) {
     
     logger.info(`Searching tabs for "${query}" with userId: ${userId}`);
     
-    const results = await searchTabs(query, userId, {
-      limit,
-      fullTextWeight,
-      semanticWeight
-    });
-    
-    return NextResponse.json(results);
+    try {
+      const results = await searchTabs(query, userId, {
+        limit,
+        fullTextWeight,
+        semanticWeight
+      });
+      
+      // Determine if this was a hybrid or keyword search
+      // Check if embeddings are enabled in the database
+      const { error: vectorExtError } = await supabase.rpc('check_vector_extension');
+      const hasVectorExtension = !vectorExtError;
+      
+      // Set the search mode header
+      const response = NextResponse.json({
+        results,
+        searchMode: hasVectorExtension ? 'hybrid' : 'keyword',
+        count: results.length
+      });
+      
+      response.headers.set('X-Search-Mode', hasVectorExtension ? 'hybrid' : 'keyword');
+      return response;
+    } catch (searchError) {
+      logger.error('Error in searchTabs:', searchError);
+      
+      // Fall back to basic text search
+      const { data, error } = await supabase
+        .from('tabs')
+        .select('*')
+        .eq('user_id', userId)
+        .neq('status', 'discarded')
+        .textSearch(
+          'title, summary, category',
+          query,
+          { config: 'english' }
+        )
+        .limit(limit);
+      
+      if (error) {
+        logger.error('Error performing fallback text search:', error);
+        return NextResponse.json({ error: 'Search failed' }, { status: 500 });
+      }
+      
+      const response = NextResponse.json({
+        results: data,
+        searchMode: 'keyword',
+        count: data.length
+      });
+      
+      response.headers.set('X-Search-Mode', 'keyword');
+      return response;
+    }
   } catch (error) {
     logger.error('Error in search tabs route:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

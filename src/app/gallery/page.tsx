@@ -56,6 +56,9 @@ export default function GalleryPage() {
     uncategorized: tabs.filter(t => t.category === 'uncategorized' && t.status === 'unprocessed').length,
   }
 
+  // State for search status
+  const [searchMode, setSearchMode] = useState<'keyword' | 'hybrid' | 'none'>('none');
+  
   // Handle search using vector embeddings
   const handleSearch = async (query: string) => {
     setSearchTerm(query);
@@ -63,6 +66,7 @@ export default function GalleryPage() {
     if (!query) {
       setSearchResults([]);
       setIsSearching(false);
+      setSearchMode('none');
       return;
     }
     
@@ -73,15 +77,53 @@ export default function GalleryPage() {
         `/api/tabs/search?q=${encodeURIComponent(query)}&fullTextWeight=${fullTextWeight}&semanticWeight=${semanticWeight}`
       );
       
+      // Parse response
+      const results = await response.json();
+      
       if (!response.ok) {
-        throw new Error('Search failed');
+        throw new Error('Search request failed');
       }
       
-      const results = await response.json();
-      setSearchResults(results);
+      // Check if we have an error field in the response
+      if (results.error) {
+        throw new Error(results.error);
+      }
+      
+      // Handle the new response format
+      if (Array.isArray(results)) {
+        // Old format - just an array of tabs
+        setSearchResults(results);
+        
+        // Determine search mode from response headers
+        const searchModeHeader = response.headers.get('X-Search-Mode');
+        if (searchModeHeader === 'hybrid') {
+          setSearchMode('hybrid');
+        } else if (searchModeHeader === 'keyword') {
+          setSearchMode('keyword');
+        } else {
+          setSearchMode('hybrid'); // Default to hybrid
+        }
+      } else if (results.results) {
+        // New format - object with results and metadata
+        setSearchResults(results.results);
+        setSearchMode(results.searchMode || 'hybrid');
+      } else {
+        // Unexpected format
+        console.error('Unexpected search response format:', results);
+        setSearchResults([]);
+        setSearchMode('keyword');
+      }
     } catch (error) {
       console.error('Search error:', error);
-      toast.error('Search failed. Please try again.');
+      // Don't show error toast for empty results, just for actual search failures
+      if (error.message !== 'Search request failed') {
+        toast.error('Advanced search unavailable. Using basic search instead.');
+      }
+      
+      // Still try to do a client-side keyword search as fallback
+      setSearchMode('keyword');
+      
+      // For now return empty to let the client-side filter handle it
       setSearchResults([]);
     } finally {
       setIsSearching(false);
@@ -155,9 +197,25 @@ export default function GalleryPage() {
             onSearchWeightChange={handleSearchWeightChange}
           />
           
-          {searchTerm && searchResults.length > 0 && (
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
-              Found {searchResults.length} results for "{searchTerm}"
+          {searchTerm && (
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 flex items-center">
+              {searchResults.length > 0 ? (
+                <>Found {searchResults.length} results for "{searchTerm}"</>
+              ) : searchMode !== 'none' ? (
+                <>No results found for "{searchTerm}"</>
+              ) : null}
+              
+              {searchMode === 'keyword' && (
+                <span className="ml-2 px-2 py-0.5 text-xs bg-yellow-100 text-yellow-800 rounded-full">
+                  Keyword search
+                </span>
+              )}
+              
+              {searchMode === 'hybrid' && (
+                <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-800 rounded-full">
+                  Enhanced search
+                </span>
+              )}
             </p>
           )}
         </div>

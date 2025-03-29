@@ -217,12 +217,19 @@ export async function searchTabs(
       return []
     }
 
-    // Generate embedding for the query
-    const embedding = await generateEmbedding(query)
+    // Try to generate embedding for the query (for semantic search)
+    let embedding = null
+    try {
+      embedding = await generateEmbedding(query)
+    } catch (embeddingError) {
+      logger.error('Error generating embedding:', embeddingError)
+      // Continue with keyword search only
+    }
     
+    // If no embedding was generated, fall back to text search only
     if (!embedding) {
-      logger.error('Failed to generate embedding for search query')
-      // Fall back to text search only
+      logger.info('No embedding available, falling back to keyword search')
+      // Perform text search
       const { data, error } = await supabase
         .from('tabs')
         .select('*')
@@ -243,80 +250,138 @@ export async function searchTabs(
       return data || []
     }
 
-    // Perform hybrid search using the RPC function
-    const { data, error } = await supabase.rpc('hybrid_search', {
-      query_text: query,
-      query_embedding: embedding,
-      match_count: options.limit || 20,
-      user_id: userId,
-      full_text_weight: options.fullTextWeight || 1.0,
-      semantic_weight: options.semanticWeight || 1.0
-    })
-
-    if (error) {
-      logger.error('Error performing hybrid search:', error)
-      return []
-    }
-
-    // Get tags and suggested folders for the search results
-    const tabIds = (data || []).map(tab => tab.id)
-    
-    if (tabIds.length > 0) {
-      // Get tab tags
-      const { data: tabTagRecords } = await supabase
-        .from('tab_tags')
-        .select('tab_id, tags(name)')
-        .in('tab_id', tabIds)
-
-      // Get suggested folders
-      const { data: suggestedFolderRecords } = await supabase
-        .from('suggested_folders')
-        .select('tab_id, folder_id')
-        .in('tab_id', tabIds)
-
-      // Enhance results with tags and suggested folders
-      return (data || []).map(tabRecord => {
-        // Process tags
-        const tabTags: string[] = []
-        if (tabTagRecords) {
-          tabTagRecords.filter(tt => tt.tab_id === tabRecord.id).forEach(tt => {
-            try {
-              const tagsObj = tt.tags as any
-              if (tagsObj && typeof tagsObj === 'object' && tagsObj.name) {
-                tabTags.push(String(tagsObj.name))
-              }
-            } catch (e) {
-              console.error('Error processing tag record:', e)
-            }
-          })
-        }
-
-        // Process suggested folders
-        const suggestedFolders = suggestedFolderRecords
-          ?.filter(sf => sf.tab_id === tabRecord.id)
-          .map(sf => sf.folder_id) || []
-
-        // Return tab with complete data
-        return {
-          id: tabRecord.id,
-          title: tabRecord.title,
-          url: tabRecord.url,
-          domain: tabRecord.domain,
-          dateAdded: tabRecord.date_added,
-          summary: tabRecord.summary || '',
-          category: tabRecord.category || 'uncategorized',
-          screenshot: tabRecord.screenshot_url,
-          status: tabRecord.status,
-          tags: tabTags,
-          folderId: tabRecord.folder_id,
-          suggestedFolders: suggestedFolders
-        } as Tab
+    // Try hybrid search first
+    try {
+      // Perform hybrid search using the RPC function
+      const { data, error } = await supabase.rpc('hybrid_search', {
+        query_text: query,
+        query_embedding: embedding,
+        match_count: options.limit || 20,
+        user_id: userId,
+        full_text_weight: options.fullTextWeight || 1.0,
+        semantic_weight: options.semanticWeight || 1.0
       })
+
+      if (error) {
+        // Hybrid search failed, fallback to standard text search
+        logger.error('Error performing hybrid search, falling back to text search:', error)
+        throw new Error('Hybrid search failed')
+      }
+      
+      if (data) {
+        return await enhanceTabsWithRelations(data, supabase)
+      }
+      
+      return []
+    } catch (hybridSearchError) {
+      // Fallback to text search if hybrid search fails
+      logger.info('Hybrid search failed, falling back to keyword search')
+      const { data, error } = await supabase
+        .from('tabs')
+        .select('*')
+        .eq('user_id', userId)
+        .neq('status', 'discarded')
+        .textSearch(
+          'title, summary, category',
+          query,
+          { config: 'english' }
+        )
+        .limit(options.limit || 20)
+
+      if (error) {
+        logger.error('Error performing fallback text search:', error)
+        return []
+      }
+      
+      return await enhanceTabsWithRelations(data || [], supabase)
     }
 
-    return []
   } catch (error) {
     logger.error('Error in searchTabs:', error)
     return []
+  }
+}
+
+/**
+ * Helper function to enhance tab records with related data (tags and suggested folders)
+ */
+async function enhanceTabsWithRelations(tabRecords: any[], supabase: any): Promise<Tab[]> {
+  if (!tabRecords || tabRecords.length === 0) {
+    return []
+  }
+  
+  try {
+    const tabIds = tabRecords.map(tab => tab.id)
+    
+    // Get tab tags in parallel
+    const [tagResponse, folderResponse] = await Promise.all([
+      supabase
+        .from('tab_tags')
+        .select('tab_id, tags(name)')
+        .in('tab_id', tabIds),
+      
+      supabase
+        .from('suggested_folders')
+        .select('tab_id, folder_id')
+        .in('tab_id', tabIds)
+    ])
+    
+    const tabTagRecords = tagResponse.data
+    const suggestedFolderRecords = folderResponse.data
+    
+    // Enhance results with tags and suggested folders
+    return tabRecords.map(tabRecord => {
+      // Process tags
+      const tabTags: string[] = []
+      if (tabTagRecords) {
+        tabTagRecords.filter(tt => tt.tab_id === tabRecord.id).forEach(tt => {
+          try {
+            const tagsObj = tt.tags as any
+            if (tagsObj && typeof tagsObj === 'object' && tagsObj.name) {
+              tabTags.push(String(tagsObj.name))
+            }
+          } catch (e) {
+            console.error('Error processing tag record:', e)
+          }
+        })
+      }
+
+      // Process suggested folders
+      const suggestedFolders = suggestedFolderRecords
+        ?.filter(sf => sf.tab_id === tabRecord.id)
+        .map(sf => sf.folder_id) || []
+
+      // Return tab with complete data
+      return {
+        id: tabRecord.id,
+        title: tabRecord.title,
+        url: tabRecord.url,
+        domain: tabRecord.domain,
+        dateAdded: tabRecord.date_added,
+        summary: tabRecord.summary || '',
+        category: tabRecord.category || 'uncategorized',
+        screenshot: tabRecord.screenshot_url,
+        status: tabRecord.status,
+        tags: tabTags,
+        folderId: tabRecord.folder_id,
+        suggestedFolders: suggestedFolders
+      } as Tab
+    })
+  } catch (error) {
+    logger.error('Error enhancing tabs with relations:', error)
+    return tabRecords.map(tr => ({
+      id: tr.id,
+      title: tr.title,
+      url: tr.url,
+      domain: tr.domain,
+      dateAdded: tr.date_added,
+      summary: tr.summary || '',
+      category: tr.category || 'uncategorized',
+      screenshot: tr.screenshot_url,
+      status: tr.status,
+      tags: [],
+      folderId: tr.folder_id,
+      suggestedFolders: []
+    } as Tab))
   }
 }
