@@ -22,20 +22,53 @@ function extractDomain(url: string): string {
 
 // Create a tab object from a URL
 function createTabFromUrl(url: string): Tab {
-  const domain = extractDomain(url)
-  const id = generateUUID()
+  try {
+    const domain = extractDomain(url)
+    const id = generateUUID()
+    
+    // Make sure URL is valid and properly formatted
+    try {
+      new URL(url); // Validate URL
+    } catch (e) {
+      // If invalid, force add https:// if not present
+      if (!url.startsWith('http')) {
+        url = `https://${url}`;
+        // Validate again
+        new URL(url);
+      } else {
+        // Still invalid even with http, use a placeholder
+        console.warn(`Invalid URL format: ${url}, using placeholder`);
+        url = `https://example.com/invalid-url-${id}`;
+      }
+    }
 
-  return {
-    id,
-    title: domain || 'Untitled',  // Use domain as title initially, will be updated later
-    url,
-    domain,
-    dateAdded: new Date().toISOString().split('T')[0],
-    summary: '',
-    category: 'uncategorized',
-    tags: [],
-    status: 'unprocessed',
-    suggestedFolders: []
+    return {
+      id,
+      title: domain || 'Untitled',  // Use domain as title initially, will be updated later
+      url,
+      domain: domain || extractDomain(url) || 'unknown',
+      dateAdded: new Date().toISOString().split('T')[0],
+      summary: '',
+      category: 'uncategorized',
+      tags: [],
+      status: 'unprocessed',
+      suggestedFolders: []
+    }
+  } catch (error) {
+    console.error(`Error creating tab from URL: ${url}`, error);
+    // Return a fallback tab to prevent complete failure
+    return {
+      id: generateUUID(),
+      title: 'Error URL',
+      url: 'https://example.com/error',
+      domain: 'example.com',
+      dateAdded: new Date().toISOString().split('T')[0],
+      summary: `Error processing original URL: ${url}`,
+      category: 'uncategorized',
+      tags: ['error'],
+      status: 'unprocessed',
+      suggestedFolders: []
+    };
   }
 }
 
@@ -113,60 +146,109 @@ function looksLikeUrl(str: string): boolean {
 
 // Parse URLs from text (pasted content)
 export function parseTabsFromText(text: string): Tab[] {
-  // Split by common delimiters (newlines, spaces, commas)
-  const potentialUrls = text.split(/[\n\r\s,]+/).filter(Boolean);
-  
-  console.log('Potential URLs:', potentialUrls);
-  
-  // Filter valid URLs and create tab objects
-  const validUrls = [];
-  const invalidUrls = [];
-  
-  for (const url of potentialUrls) {
-    const isValid = looksLikeUrl(url);
-    if (isValid) {
-      validUrls.push(url);
-    } else {
-      invalidUrls.push(url);
+  try {
+    // Handle empty input
+    if (!text || text.trim() === '') {
+      return [];
     }
-  }
-  
-  console.log('Valid URLs after filtering:', validUrls);
-  console.log('Invalid URLs skipped:', invalidUrls);
-  
-  return validUrls
-    .map(url => {
-      // Add https:// prefix if missing
-      if (!url.startsWith('http')) {
-        url = `https://${url}`
+    
+    // Split by common delimiters (newlines, spaces, commas)
+    const potentialUrls = text.split(/[\n\r\s,]+/).filter(Boolean);
+    
+    console.log('Potential URLs:', potentialUrls);
+    
+    // Filter valid URLs and create tab objects
+    const validUrls = [];
+    const invalidUrls = [];
+    
+    for (const url of potentialUrls) {
+      try {
+        const isValid = looksLikeUrl(url);
+        if (isValid) {
+          validUrls.push(url);
+        } else {
+          invalidUrls.push(url);
+        }
+      } catch (validationError) {
+        console.error(`Error validating URL: ${url}`, validationError);
+        invalidUrls.push(url);
       }
-      return createTabFromUrl(url)
-    })
+    }
+    
+    console.log('Valid URLs after filtering:', validUrls);
+    console.log('Invalid URLs skipped:', invalidUrls);
+    
+    // Create tab objects with error handling
+    const tabs = [];
+    for (const url of validUrls) {
+      try {
+        // Add https:// prefix if missing
+        let processedUrl = url;
+        if (!processedUrl.startsWith('http')) {
+          processedUrl = `https://${processedUrl}`;
+        }
+        
+        const tab = createTabFromUrl(processedUrl);
+        tabs.push(tab);
+      } catch (tabCreationError) {
+        console.error(`Error creating tab from URL: ${url}`, tabCreationError);
+        // Skip this URL instead of failing the entire batch
+      }
+    }
+    
+    return tabs;
+  } catch (error) {
+    console.error('Error parsing URLs from text:', error);
+    return []; // Return empty array on error instead of throwing
+  }
 }
 
 // Parse URLs from file (txt or csv)
 export async function parseTabsFromFile(file: File): Promise<Tab[]> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader()
+    // Validate file exists
+    if (!file) {
+      console.error('No file provided');
+      resolve([]);
+      return;
+    }
+    
+    const reader = new FileReader();
 
     reader.onload = (e) => {
       try {
-        const content = e.target?.result as string
+        const content = e.target?.result as string;
+        
+        if (!content) {
+          console.error('File content is empty');
+          resolve([]);
+          return;
+        }
 
         // Parse the content as text
-        const tabs = parseTabsFromText(content)
-        resolve(tabs)
+        const tabs = parseTabsFromText(content);
+        console.log(`File parsing complete. Found ${tabs.length} valid URLs.`);
+        resolve(tabs);
       } catch (error) {
-        reject(error)
+        console.error('Error parsing file content:', error);
+        // Don't reject, return an empty array to avoid breaking the UI
+        resolve([]);
       }
-    }
+    };
 
-    reader.onerror = () => {
-      reject(new Error('Error reading file'))
-    }
+    reader.onerror = (error) => {
+      console.error('Error reading file:', error);
+      // Don't reject, return an empty array to avoid breaking the UI
+      resolve([]);
+    };
 
-    reader.readAsText(file)
-  })
+    try {
+      reader.readAsText(file);
+    } catch (error) {
+      console.error('Error initiating file read:', error);
+      resolve([]);
+    }
+  });
 }
 
 // Process tabs with AI and capture screenshots

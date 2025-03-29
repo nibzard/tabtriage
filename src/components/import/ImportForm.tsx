@@ -25,17 +25,23 @@ export function ImportForm({ onImportStart, onUpdateProgress }: ImportFormProps)
   const validateUrls = (text: string) => {
     if (!text.trim()) {
       setValidUrlCount(0)
-      return
+      return 0
     }
     
-    // Split and count valid URLs
-    const potential = text.split(/[\n\r\s,]+/).filter(Boolean)
-    
-    // Defer to the same validation function used by the actual import
-    const valid = parseTabsFromText(text).length
-    setValidUrlCount(valid)
-    
-    return valid
+    try {
+      // Split and count valid URLs
+      const potential = text.split(/[\n\r\s,]+/).filter(Boolean)
+      
+      // Defer to the same validation function used by the actual import
+      const valid = parseTabsFromText(text).length
+      setValidUrlCount(valid)
+      
+      return valid
+    } catch (error) {
+      console.error('Error validating URLs:', error)
+      setValidUrlCount(0)
+      return 0
+    }
   }
 
   // Handle drag events
@@ -119,17 +125,31 @@ export function ImportForm({ onImportStart, onUpdateProgress }: ImportFormProps)
       
       // Process tabs in batches to show progress
       const BATCH_SIZE = 5
-      for (let i = 0; i < newTabs.length; i += BATCH_SIZE) {
-        const batch = newTabs.slice(i, i + BATCH_SIZE)
-        addTabs(batch)
-        
-        // Update progress
-        if (onUpdateProgress) {
-          onUpdateProgress(Math.min(i + BATCH_SIZE, newTabs.length))
+      try {
+        for (let i = 0; i < newTabs.length; i += BATCH_SIZE) {
+          const batch = newTabs.slice(i, i + BATCH_SIZE)
+          
+          console.log(`Processing batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(newTabs.length/BATCH_SIZE)}:`, 
+            batch.map(tab => tab.url));
+          
+          try {
+            addTabs(batch)
+            
+            // Update progress
+            if (onUpdateProgress) {
+              onUpdateProgress(Math.min(i + BATCH_SIZE, newTabs.length))
+            }
+            
+            // Small delay to show progress
+            await new Promise(resolve => setTimeout(resolve, 200))
+          } catch (batchError) {
+            console.error(`Error processing batch at index ${i}:`, batchError)
+            throw new Error(`Error in batch ${Math.floor(i/BATCH_SIZE) + 1}: ${batchError.message || 'Unknown error'}`)
+          }
         }
-        
-        // Small delay to show progress
-        await new Promise(resolve => setTimeout(resolve, 200))
+      } catch (batchProcessError) {
+        console.error('Error during batch processing:', batchProcessError)
+        throw batchProcessError
       }
 
       // Reset form
@@ -140,9 +160,19 @@ export function ImportForm({ onImportStart, onUpdateProgress }: ImportFormProps)
       }
       
       toast.success(`${newTabs.length} tabs imported successfully`)
+      
+      // Reset loading state after a short delay to ensure UI updates
+      setTimeout(() => setIsLoading(false), 300)
     } catch (error) {
       console.error('Error importing tabs:', error)
-      toast.error('Error importing tabs. Please try again.')
+      // Add more detailed error logging
+      if (error instanceof Error) {
+        console.error('Error message:', error.message)
+        console.error('Error stack:', error.stack)
+        toast.error(`Import error: ${error.message || 'Unknown error'}`)
+      } else {
+        toast.error('Error importing tabs. Please try again.')
+      }
       setIsLoading(false)
     }
   }
