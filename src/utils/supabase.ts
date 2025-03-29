@@ -3,6 +3,7 @@ import { Tab } from '@/types/Tab'
 import { Folder } from '@/types/Folder'
 import { logger } from '@/utils/logger'
 import { generateTabEmbedding } from '@/services/embeddingService'
+import { v4 as uuidv4 } from 'uuid'
 
 // Define database types
 export type TabRecord = {
@@ -74,6 +75,58 @@ supabase.auth.getSession().then(({ data, error }) => {
 
 // Storage bucket for tab screenshots
 export const STORAGE_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET || 'tab-screenshots'
+
+/**
+ * Helper function to ensure a user profile exists
+ */
+async function ensureUserProfileExists(userId: string): Promise<boolean> {
+  try {
+    // Validate userId format
+    if (!userId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+      console.error('Invalid UUID for user profile:', userId)
+      return false
+    }
+    
+    // Check if user profile exists
+    const { data: profileData, error: profileError } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', userId)
+      .single()
+      
+    if (!profileError) {
+      return true // Profile exists
+    }
+    
+    // If profile not found, create a new one
+    if (profileError.code === 'PGRST116') {
+      console.log('Profile not found, creating a new one')
+      
+      const randomId = Date.now().toString().slice(-8)
+      const { error: createError } = await supabase
+        .from('profiles')
+        .insert({
+          id: userId,
+          email: `user-${randomId}@example.com`,
+          display_name: 'Auto-created User'
+        })
+      
+      if (createError) {
+        console.error('Error creating profile:', createError)
+        return false
+      }
+      
+      return true
+    }
+    
+    // Any other error
+    console.error('Error checking profile:', profileError)
+    return false
+  } catch (error) {
+    console.error('Exception in ensureUserProfileExists:', error)
+    return false
+  }
+}
 
 // Upload a screenshot to Supabase Storage
 export async function uploadScreenshot(
@@ -280,35 +333,10 @@ export async function saveTabToDatabase(tab: Tab, userId: string): Promise<strin
     console.log('Tab data:', JSON.stringify(tab, null, 2))
     console.log('User ID:', userId)
 
-    // Check if the user exists in the profiles table
-    const { data: profileData, error: profileError } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('id', userId)
-      .single()
-
-    if (profileError) {
-      console.error('Error checking profile:', profileError)
-
-      // If the profile doesn't exist, try to create it
-      if (profileError.code === 'PGRST116') { // Not found error
-        console.log('Profile not found, creating a new one')
-        const { data: newProfile, error: createError } = await supabase
-          .from('profiles')
-          .insert({
-            id: userId,
-            email: `user-${Date.now()}@example.com`,
-            display_name: 'Auto-created User'
-          })
-          .select()
-
-        if (createError) {
-          console.error('Error creating profile:', createError)
-          throw new Error(`Failed to create profile: ${createError.message}`)
-        }
-      } else {
-        throw new Error(`Profile check failed: ${profileError.message}`)
-      }
+    // Ensure user profile exists
+    const profileExists = await ensureUserProfileExists(userId)
+    if (!profileExists) {
+      throw new Error('Could not ensure user profile exists. Cannot save tab.')
     }
 
     const tabRecord = tabToRecord(tab, userId)
@@ -588,35 +616,10 @@ export async function saveFolderToDatabase(folder: Folder, userId: string): Prom
     console.log('Folder data:', JSON.stringify(folder, null, 2))
     console.log('User ID:', userId)
 
-    // Check if the user exists in the profiles table
-    const { data: profileData, error: profileError } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('id', userId)
-      .single()
-
-    if (profileError) {
-      console.error('Error checking profile:', profileError)
-
-      // If the profile doesn't exist, try to create it
-      if (profileError.code === 'PGRST116') { // Not found error
-        console.log('Profile not found, creating a new one')
-        const { data: newProfile, error: createError } = await supabase
-          .from('profiles')
-          .insert({
-            id: userId,
-            email: `user-${Date.now()}@example.com`,
-            display_name: 'Auto-created User'
-          })
-          .select()
-
-        if (createError) {
-          console.error('Error creating profile:', createError)
-          throw new Error(`Failed to create profile: ${createError.message}`)
-        }
-      } else {
-        throw new Error(`Profile check failed: ${profileError.message}`)
-      }
+    // Ensure user profile exists
+    const profileExists = await ensureUserProfileExists(userId)
+    if (!profileExists) {
+      throw new Error('Could not ensure user profile exists. Cannot save folder.')
     }
 
     const folderRecord = folderToRecord(folder, userId)
