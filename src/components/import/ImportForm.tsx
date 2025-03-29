@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react'
 import { motion } from 'framer-motion'
-import toast from 'react-hot-toast'
+import { toast } from 'react-hot-toast'
 import { parseTabsFromText, parseTabsFromFile } from '@/services/tabService'
 import { useTabsContext } from '@/context/TabsContext'
 
@@ -117,7 +117,13 @@ export function ImportForm({ onImportStart, onUpdateProgress }: ImportFormProps)
       // Provide feedback on validation
       const invalidCount = Math.max(0, inputUrlCount - newTabs.length);
       if (invalidCount > 0) {
-        toast.warning(`${invalidCount} items were not valid URLs and were skipped`);
+        toast(`${invalidCount} items were not valid URLs and were skipped`, { 
+          icon: '⚠️',
+          style: {
+            background: '#FEF3C7',
+            color: '#92400E'
+          }
+        });
       }
       
       // Signal that import has started
