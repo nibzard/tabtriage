@@ -50,45 +50,64 @@ function looksLikeUrl(str: string): boolean {
   // Too short strings are not URLs (at least a.b)
   if (str.length < 3) return false;
   
-  // Check for domain-like patterns (something.something)
-  if (str.includes('.')) {
-    // If it has a dot and common domain extensions, it's likely a URL
-    const commonTlds = ['.com', '.org', '.net', '.io', '.dev', '.co', '.app', '.edu', '.gov', '.me', '.info'];
-    if (commonTlds.some(tld => str.includes(tld))) return true;
-    
-    // Check if it follows domain pattern (letters, numbers, dashes followed by dot)
-    if (/^[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$/.test(str)) return true;
-  }
+  // Single words without dots are not URLs (like "Book")
+  if (!str.includes('.') && !/\s/.test(str)) return false;
   
-  // If it starts with common URL protocols
-  if (str.startsWith('http://') || str.startsWith('https://') || 
-      str.startsWith('ftp://') || str.startsWith('file://')) {
-    return true;
-  }
+  // Check if it has a protocol prefix
+  const hasProtocolPrefix = 
+    str.startsWith('http://') || 
+    str.startsWith('https://') || 
+    str.startsWith('ftp://') || 
+    str.startsWith('file://');
   
-  // If it has a typical URL structure (www.something.something)
-  if (str.startsWith('www.') && str.includes('.', 4)) return true;
-  
-  // Special cases - IP-like addresses
-  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(str)) return true;
-  
-  // Attempt strict URL validation
-  try {
-    new URL(str);
-    return true;
-  } catch {
-    // If strict validation fails, try with https:// prefix
+  // If it has a protocol, we can validate it directly
+  if (hasProtocolPrefix) {
     try {
-      if (!str.startsWith('http')) {
-        new URL(`https://${str}`);
-        return true;
-      }
+      new URL(str);
+      return true;
     } catch {
-      // Not a valid URL with either method
       return false;
     }
   }
   
+  // Check for domain-like patterns (something.something)
+  if (str.includes('.')) {
+    // Common TLDs check - domain must END with these, not just include them
+    const commonTlds = ['.com', '.org', '.net', '.io', '.dev', '.co', '.app', '.edu', '.gov', '.me', '.info', 
+                        '.ai', '.wiki', '.github.io'];
+    const endsWithTld = commonTlds.some(tld => str.endsWith(tld) || str.includes(tld + '/'));
+    
+    // Check if it starts with www.
+    const startsWithWww = str.startsWith('www.');
+    
+    // Check if it follows domain pattern (letters, numbers, dashes followed by dot)
+    const hasDomainPattern = /^[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$/.test(str);
+    
+    // If it has typical URL structure (any of the above), it's likely a URL
+    if (endsWithTld || startsWithWww || hasDomainPattern) {
+      // Try to validate it with https:// prefix
+      try {
+        new URL(`https://${str}`);
+        return true;
+      } catch {
+        // Even if URL constructor fails, it might still be a valid domain
+        // This could happen with unusual TLDs or internal domains
+        return hasDomainPattern || startsWithWww;
+      }
+    }
+  }
+  
+  // Special cases - IP-like addresses
+  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(str)) {
+    try {
+      new URL(`http://${str}`);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  
+  // If we've reached here, it's not a URL
   return false;
 }
 
@@ -100,9 +119,20 @@ export function parseTabsFromText(text: string): Tab[] {
   console.log('Potential URLs:', potentialUrls);
   
   // Filter valid URLs and create tab objects
-  const validUrls = potentialUrls.filter(url => looksLikeUrl(url));
+  const validUrls = [];
+  const invalidUrls = [];
+  
+  for (const url of potentialUrls) {
+    const isValid = looksLikeUrl(url);
+    if (isValid) {
+      validUrls.push(url);
+    } else {
+      invalidUrls.push(url);
+    }
+  }
   
   console.log('Valid URLs after filtering:', validUrls);
+  console.log('Invalid URLs skipped:', invalidUrls);
   
   return validUrls
     .map(url => {
