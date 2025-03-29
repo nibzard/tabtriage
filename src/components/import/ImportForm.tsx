@@ -17,8 +17,26 @@ export function ImportForm({ onImportStart, onUpdateProgress }: ImportFormProps)
   const [pastedUrls, setPastedUrls] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  const [validUrlCount, setValidUrlCount] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { addTabs } = useTabsContext()
+  
+  // Validate URLs as user types
+  const validateUrls = (text: string) => {
+    if (!text.trim()) {
+      setValidUrlCount(0)
+      return
+    }
+    
+    // Split and count valid URLs
+    const potential = text.split(/[\n\r\s,]+/).filter(Boolean)
+    
+    // Defer to the same validation function used by the actual import
+    const valid = parseTabsFromText(text).length
+    setValidUrlCount(valid)
+    
+    return valid
+  }
 
   // Handle drag events
   const handleDragOver = (e: React.DragEvent) => {
@@ -38,11 +56,17 @@ export function ImportForm({ onImportStart, onUpdateProgress }: ImportFormProps)
       const droppedFile = e.dataTransfer.files[0]
       if (droppedFile.type === 'text/plain' || droppedFile.name.endsWith('.txt') || droppedFile.name.endsWith('.csv')) {
         setFile(droppedFile)
+        // Clear pasted URLs and validation state
+        setPastedUrls('')
+        setValidUrlCount(0)
       } else {
         toast.error('Only text or CSV files are supported')
       }
     } else if (e.dataTransfer.getData('text')) {
-      setPastedUrls(e.dataTransfer.getData('text'))
+      const droppedText = e.dataTransfer.getData('text')
+      setPastedUrls(droppedText)
+      // Validate the dropped text
+      validateUrls(droppedText)
     }
   }
 
@@ -50,7 +74,9 @@ export function ImportForm({ onImportStart, onUpdateProgress }: ImportFormProps)
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       setFile(e.target.files[0])
-      setPastedUrls('') // Clear pasted URLs if file is selected
+      // Clear pasted URLs and validation state
+      setPastedUrls('')
+      setValidUrlCount(0)
     }
   }
 
@@ -59,11 +85,17 @@ export function ImportForm({ onImportStart, onUpdateProgress }: ImportFormProps)
     try {
       setIsLoading(true)
       let newTabs = []
+      let inputUrlCount = 0;
 
       if (pastedUrls.trim()) {
+        // Count raw input items for validation feedback
+        inputUrlCount = pastedUrls.split(/[\n\r\s,]+/).filter(Boolean).length;
         newTabs = await parseTabsFromText(pastedUrls)
       } else if (file) {
         newTabs = await parseTabsFromFile(file)
+        // File content is processed in parseTabsFromFile, so we don't know the raw count
+        // We'll estimate based on the file size (rough approximation)
+        inputUrlCount = Math.max(newTabs.length, Math.floor(file.size / 50)); // Assuming average URL is ~50 chars
       } else {
         toast.error('Please paste some URLs or select a file')
         setIsLoading(false)
@@ -76,6 +108,12 @@ export function ImportForm({ onImportStart, onUpdateProgress }: ImportFormProps)
         return
       }
 
+      // Provide feedback on validation
+      const invalidCount = Math.max(0, inputUrlCount - newTabs.length);
+      if (invalidCount > 0) {
+        toast.warning(`${invalidCount} items were not valid URLs and were skipped`);
+      }
+      
       // Signal that import has started
       onImportStart(newTabs.length)
       
@@ -140,14 +178,40 @@ export function ImportForm({ onImportStart, onUpdateProgress }: ImportFormProps)
               Paste your Safari tab links below, or drag & drop a file
             </p>
             
-            <textarea
-              rows={6}
-              className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-              placeholder="Paste URLs here, one per line"
-              value={pastedUrls}
-              onChange={(e) => setPastedUrls(e.target.value)}
-              disabled={isLoading || !!file}
-            ></textarea>
+            <div className="relative">
+              <textarea
+                rows={6}
+                className={`w-full p-3 border ${
+                  pastedUrls && validUrlCount === 0 
+                    ? 'border-red-300 dark:border-red-600' 
+                    : validUrlCount > 0 
+                      ? 'border-green-300 dark:border-green-600' 
+                      : 'border-gray-300 dark:border-gray-600'
+                } rounded-md shadow-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500`}
+                placeholder="Paste URLs here, one per line"
+                value={pastedUrls}
+                onChange={(e) => {
+                  const newValue = e.target.value;
+                  setPastedUrls(newValue);
+                  validateUrls(newValue);
+                }}
+                disabled={isLoading || !!file}
+              ></textarea>
+              
+              {pastedUrls && (
+                <div className="absolute right-3 top-3 flex items-center space-x-2">
+                  {validUrlCount > 0 ? (
+                    <span className="bg-green-100 text-green-800 text-xs font-medium py-1 px-2 rounded dark:bg-green-900 dark:text-green-300">
+                      {validUrlCount} valid URL{validUrlCount !== 1 ? 's' : ''}
+                    </span>
+                  ) : (
+                    <span className="bg-red-100 text-red-800 text-xs font-medium py-1 px-2 rounded dark:bg-red-900 dark:text-red-300">
+                      No valid URLs
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
             
             <div className="text-center py-2">
               <span className="text-sm text-gray-500 dark:text-gray-400">or</span>

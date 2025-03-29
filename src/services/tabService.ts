@@ -39,31 +39,72 @@ function createTabFromUrl(url: string): Tab {
   }
 }
 
+/**
+ * Basic check to see if a string looks like a URL
+ * This is intentionally not too strict, just to filter out obvious non-URLs
+ */
+function looksLikeUrl(str: string): boolean {
+  // Empty strings are not URLs
+  if (!str || str.trim() === '') return false;
+  
+  // Too short strings are not URLs (at least a.b)
+  if (str.length < 3) return false;
+  
+  // Check for domain-like patterns (something.something)
+  if (str.includes('.')) {
+    // If it has a dot and common domain extensions, it's likely a URL
+    const commonTlds = ['.com', '.org', '.net', '.io', '.dev', '.co', '.app', '.edu', '.gov', '.me', '.info'];
+    if (commonTlds.some(tld => str.includes(tld))) return true;
+    
+    // Check if it follows domain pattern (letters, numbers, dashes followed by dot)
+    if (/^[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$/.test(str)) return true;
+  }
+  
+  // If it starts with common URL protocols
+  if (str.startsWith('http://') || str.startsWith('https://') || 
+      str.startsWith('ftp://') || str.startsWith('file://')) {
+    return true;
+  }
+  
+  // If it has a typical URL structure (www.something.something)
+  if (str.startsWith('www.') && str.includes('.', 4)) return true;
+  
+  // Special cases - IP-like addresses
+  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/.test(str)) return true;
+  
+  // Attempt strict URL validation
+  try {
+    new URL(str);
+    return true;
+  } catch {
+    // If strict validation fails, try with https:// prefix
+    try {
+      if (!str.startsWith('http')) {
+        new URL(`https://${str}`);
+        return true;
+      }
+    } catch {
+      // Not a valid URL with either method
+      return false;
+    }
+  }
+  
+  return false;
+}
+
 // Parse URLs from text (pasted content)
 export function parseTabsFromText(text: string): Tab[] {
   // Split by common delimiters (newlines, spaces, commas)
-  const potentialUrls = text.split(/[\n\r\s,]+/).filter(Boolean)
-
+  const potentialUrls = text.split(/[\n\r\s,]+/).filter(Boolean);
+  
+  console.log('Potential URLs:', potentialUrls);
+  
   // Filter valid URLs and create tab objects
-  return potentialUrls
-    .filter(url => {
-      try {
-        // Check if it's a valid URL
-        new URL(url)
-        return true
-      } catch (e) {
-        // Try adding https:// prefix if missing
-        try {
-          if (!url.startsWith('http')) {
-            new URL(`https://${url}`)
-            return true
-          }
-        } catch (e) {
-          // Not a valid URL
-        }
-        return false
-      }
-    })
+  const validUrls = potentialUrls.filter(url => looksLikeUrl(url));
+  
+  console.log('Valid URLs after filtering:', validUrls);
+  
+  return validUrls
     .map(url => {
       // Add https:// prefix if missing
       if (!url.startsWith('http')) {
