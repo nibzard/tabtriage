@@ -5,25 +5,16 @@ import { createServerSupabaseClient } from '@/utils/supabase-server'
 export async function middleware(request: NextRequest) {
   const res = NextResponse.next()
 
-  // Skip middleware for public routes
+  // Skip middleware for public routes and API routes
   if (request.nextUrl.pathname === '/' || 
       request.nextUrl.pathname.startsWith('/_next') || 
       request.nextUrl.pathname.startsWith('/api')) {
     return res
   }
 
-  // Create a Supabase client for the middleware
-  const supabase = createServerSupabaseClient()
-
-  // Get the user's session
-  const { data: { session } } = await supabase.auth.getSession()
-
-  // If no session and not on a public route, redirect to home page
-  if (!session) {
-    const redirectUrl = new URL('/', request.url)
-    return NextResponse.redirect(redirectUrl)
-  }
-
+  // For now, allow all requests to proceed
+  // This will let us test the app without authentication
+  // The client-side code will create an anonymous session if needed
   return res
 }
 

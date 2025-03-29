@@ -1,11 +1,13 @@
 'use client'
 
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Tab } from '@/types/Tab'
 import { tabApi } from '@/utils/api-client'
 import { logger } from '@/utils/logger'
 import { generateUUID } from '@/utils/uuid'
+import { ensureSession } from '@/utils/auth-helper'
+import { getTabs as getLocalTabs } from '@/services/tabService'
 
 interface TabsContextType {
   tabs: Tab[]
@@ -23,13 +25,77 @@ const TabsContext = createContext<TabsContextType | undefined>(undefined)
 
 export function TabsProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
+  const [hasSession, setHasSession] = useState(false);
+  
+  // Ensure we have a valid session
+  useEffect(() => {
+    const initSession = async () => {
+      try {
+        await ensureSession();
+        setHasSession(true);
+        logger.info('User session initialized successfully');
+      } catch (error) {
+        logger.error('Failed to initialize user session, using local storage fallback:', error);
+        
+        // Explicitly load local tabs when session fails
+        const { getTabs } = await import('@/services/tabService');
+        const localTabs = getTabs();
+        
+        if (localTabs.length > 0) {
+          logger.info(`Loaded ${localTabs.length} tabs from local storage`);
+          // Update the cache directly
+          queryClient.setQueryData(['tabs'], localTabs);
+        }
+      }
+    };
+    
+    initSession();
+    
+    // Set up an interval to periodically save tabs to localStorage as a backup
+    const backupInterval = setInterval(async () => {
+      const currentTabs = queryClient.getQueryData<Tab[]>(['tabs']) || [];
+      if (currentTabs.length > 0) {
+        const { saveTabs } = await import('@/services/tabService');
+        saveTabs(currentTabs);
+        logger.debug(`Backup: saved ${currentTabs.length} tabs to localStorage`);
+      }
+    }, 60000); // Every minute
+    
+    return () => {
+      clearInterval(backupInterval);
+    };
+  }, [queryClient]);
   
   // Use React Query for server state management
-  const { data: tabs = [], isLoading } = useQuery({
+  const { data: serverTabs = [], isLoading, isError: isTabsFetchError } = useQuery({
     queryKey: ['tabs'],
     queryFn: tabApi.getTabs,
     staleTime: 1000 * 60 * 5, // 5 minutes
+    retry: 2, // Retry failed requests twice
+    enabled: hasSession, // Only run the query when we have a session
+    onError: (error) => {
+      logger.error('Error fetching tabs from API:', error)
+    }
   })
+  
+  // Get local tabs for potential fallback
+  const [localTabs, setLocalTabs] = useState<Tab[]>([]);
+  
+  // Load local tabs on mount for comparison/fallback
+  useEffect(() => {
+    const loadLocalTabs = async () => {
+      const { getTabs } = await import('@/services/tabService');
+      const tabs = getTabs();
+      if (tabs.length > 0) {
+        logger.debug(`Found ${tabs.length} tabs in localStorage`);
+        setLocalTabs(tabs);
+      }
+    };
+    loadLocalTabs();
+  }, []);
+  
+  // Determine which tabs to use - prefer server tabs, fall back to local
+  const tabs = serverTabs.length > 0 ? serverTabs : localTabs;
   
   // Save tab mutation with batched invalidation
   const saveTabMutation = useMutation({
@@ -70,13 +136,29 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     try {
       // Save tabs to the server with Promise.all for better performance
       const savePromises = uniqueNewTabs.map(tab => saveTabMutation.mutateAsync(tab))
+      
+      // Also save to localStorage as a fallback
+      const allTabs = [...tabs, ...uniqueNewTabs];
+      import('@/services/tabService').then(({ saveTabs }) => {
+        saveTabs(allTabs);
+        logger.debug('Saved tabs to localStorage as fallback');
+      });
+      
       await Promise.all(savePromises)
       
       // Now that all tabs are saved, invalidate the query once
       logger.info(`All ${uniqueNewTabs.length} tabs saved successfully. Refreshing data.`)
       queryClient.invalidateQueries({ queryKey: ['tabs'] })
     } catch (error) {
-      logger.error('Error saving tabs:', error)
+      logger.error('Error saving tabs to server:', error)
+      
+      // Save to localStorage on server error
+      const allTabs = [...tabs, ...uniqueNewTabs];
+      import('@/services/tabService').then(({ saveTabs }) => {
+        saveTabs(allTabs);
+        logger.info('Saved tabs to localStorage due to server error');
+      });
+      
       // Still invalidate to ensure UI is consistent
       queryClient.invalidateQueries({ queryKey: ['tabs'] })
     }
@@ -98,8 +180,18 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       return
     }
     
+    // Save to localStorage for persistence
+    const updatedTabs = tabs.map(t => t.id === tabId ? { ...t, ...updates } : t);
+    import('@/services/tabService').then(({ saveTabs }) => {
+      saveTabs(updatedTabs);
+      logger.debug(`Saved updated tab ${tabId} to localStorage`);
+    });
+    
     // Save the updated tab to the server
     saveTabMutation.mutate({ ...tab, ...updates })
+      .catch(error => {
+        logger.error(`Failed to save tab ${tabId} to server:`, error);
+      });
   }, [tabs, queryClient, saveTabMutation])
   
   // Delete a tab
@@ -111,9 +203,19 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       oldTabs.filter(tab => tab.id !== tabId)
     )
     
+    // Update localStorage to remove the tab
+    const updatedTabs = tabs.filter(tab => tab.id !== tabId);
+    import('@/services/tabService').then(({ saveTabs }) => {
+      saveTabs(updatedTabs);
+      logger.debug(`Removed tab ${tabId} from localStorage`);
+    });
+    
     // Delete the tab from the server
     deleteTabMutation.mutate(tabId)
-  }, [queryClient, deleteTabMutation])
+      .catch(error => {
+        logger.error(`Failed to delete tab ${tabId} from server:`, error);
+      });
+  }, [tabs, queryClient, deleteTabMutation])
   
   // Delete all discarded tabs
   const deleteAllDiscarded = useCallback(() => {
@@ -126,9 +228,19 @@ export function TabsProvider({ children }: { children: ReactNode }) {
       oldTabs.filter(tab => tab.status !== 'discarded')
     )
     
+    // Update localStorage to remove all discarded tabs
+    const updatedTabs = tabs.filter(tab => tab.status !== 'discarded');
+    import('@/services/tabService').then(({ saveTabs }) => {
+      saveTabs(updatedTabs);
+      logger.debug(`Removed ${discardedTabs.length} discarded tabs from localStorage`);
+    });
+    
     // Delete each discarded tab from the server
     discardedTabs.forEach(tab => {
       deleteTabMutation.mutate(tab.id)
+        .catch(error => {
+          logger.error(`Failed to delete discarded tab ${tab.id} from server:`, error);
+        });
     })
   }, [tabs, queryClient, deleteTabMutation])
   

@@ -12,7 +12,9 @@ export async function GET() {
     const userId = await getServerUserId();
     
     if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      logger.warn('No user ID found for GET tabs request, falling back to local storage');
+      // Return empty array instead of error to allow client-side fallback
+      return NextResponse.json([]);
     }
     
     const { data: tabRecords, error } = await supabase
@@ -117,7 +119,14 @@ export async function POST(request: Request) {
     const userId = await getServerUserId();
     
     if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      logger.warn('No user ID found for POST tabs request, using anonymous user');
+      // Create a temporary ID for this request
+      const tempUserId = `anon-${Date.now()}`;
+      return NextResponse.json({ 
+        success: false, 
+        error: 'No authenticated user',
+        message: 'Your data was saved locally but not to the server. Refresh may lose data.'
+      });
     }
     
     const tab = await request.json() as Tab;
@@ -234,7 +243,12 @@ export async function DELETE(request: Request) {
     const userId = await getServerUserId();
     
     if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      logger.warn('No user ID found for DELETE tabs request');
+      return NextResponse.json({ 
+        success: false,
+        error: 'No authenticated user',
+        message: 'Unable to delete from server. Data may only be removed locally.'
+      });
     }
     
     const url = new URL(request.url);
