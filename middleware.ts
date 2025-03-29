@@ -1,28 +1,27 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { createServerSupabaseClient } from '@/utils/supabase-server'
+import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
 
-export async function middleware(request: NextRequest) {
+export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
+  const supabase = createMiddlewareClient({ req, res })
 
-  // Skip middleware for public routes and API routes
-  if (request.nextUrl.pathname === '/' || 
-      request.nextUrl.pathname.startsWith('/_next') || 
-      request.nextUrl.pathname.startsWith('/api')) {
-    return res
-  }
+  // Refresh the session if it exists
+  await supabase.auth.getSession()
 
-  // For now, allow all requests to proceed
-  // This will let us test the app without authentication
-  // The client-side code will create an anonymous session if needed
   return res
 }
 
-// Apply the middleware to specific paths
+// Specify which paths this middleware should run on
 export const config = {
   matcher: [
-    '/folders/:path*',
-    '/gallery/:path*',
-    '/import/:path*',
+    /*
+     * Match all request paths except for:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - public folder (public files)
+     */
+    '/((?!_next/static|_next/image|favicon.ico|.*\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }

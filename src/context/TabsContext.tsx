@@ -116,9 +116,29 @@ export function TabsProvider({ children }: { children: ReactNode }) {
   const addTabs = useCallback(async (newTabs: Tab[]) => {
     logger.info(`Adding ${newTabs.length} new tabs`)
     
-    // Filter out duplicates based on URL
-    const existingUrls = new Set(tabs.map(tab => tab.url))
-    const uniqueNewTabs = newTabs.filter(tab => !existingUrls.has(tab.url))
+    // Filter out duplicates based on URL with more strict matching
+    const existingUrls = new Map(tabs.map(tab => [tab.url.toLowerCase().trim(), tab.id]))
+    
+    // Make sure we don't add the same tab twice in this batch either
+    const processedUrls = new Set<string>()
+    
+    const uniqueNewTabs = newTabs.filter(tab => {
+      const normalizedUrl = tab.url.toLowerCase().trim()
+      
+      // If we already processed this URL in this batch, skip it
+      if (processedUrls.has(normalizedUrl)) {
+        return false
+      }
+      
+      // If this URL already exists in the tabs, skip it
+      if (existingUrls.has(normalizedUrl)) {
+        return false
+      }
+      
+      // Mark this URL as processed for this batch
+      processedUrls.add(normalizedUrl)
+      return true
+    })
     
     if (uniqueNewTabs.length === 0) {
       logger.info('No unique tabs to add')
@@ -127,30 +147,30 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     
     logger.info(`${uniqueNewTabs.length} unique tabs will be added`)
     
-    // Optimistically update the UI once - prevents multiple renders
-    queryClient.setQueryData(['tabs'], (oldTabs: Tab[] = []) => [
-      ...oldTabs,
-      ...uniqueNewTabs,
-    ])
-    
     try {
-      // Save tabs to the server with Promise.all for better performance
+      // Save tabs to the server first
       const savePromises = uniqueNewTabs.map(tab => saveTabMutation.mutateAsync(tab))
-      
-      // Also save to localStorage as a fallback
-      const allTabs = [...tabs, ...uniqueNewTabs];
-      import('@/services/tabService').then(({ saveTabs }) => {
-        saveTabs(allTabs);
-        logger.debug('Saved tabs to localStorage as fallback');
-      });
-      
       await Promise.all(savePromises)
       
-      // Now that all tabs are saved, invalidate the query once
+      // Only update UI after successful server save to prevent duplicate UI entries
       logger.info(`All ${uniqueNewTabs.length} tabs saved successfully. Refreshing data.`)
       queryClient.invalidateQueries({ queryKey: ['tabs'] })
+      
+      // Also save to localStorage as a fallback, but only after server sync
+      // Use the latest tabs from the cache to avoid duplications
+      const latestTabs = queryClient.getQueryData<Tab[]>(['tabs']) || []
+      import('@/services/tabService').then(({ saveTabs }) => {
+        saveTabs(latestTabs);
+        logger.debug('Saved tabs to localStorage as fallback');
+      });
     } catch (error) {
       logger.error('Error saving tabs to server:', error)
+      
+      // For server error, do an optimistic update to the UI
+      queryClient.setQueryData(['tabs'], (oldTabs: Tab[] = []) => [
+        ...oldTabs,
+        ...uniqueNewTabs,
+      ])
       
       // Save to localStorage on server error
       const allTabs = [...tabs, ...uniqueNewTabs];
@@ -158,9 +178,6 @@ export function TabsProvider({ children }: { children: ReactNode }) {
         saveTabs(allTabs);
         logger.info('Saved tabs to localStorage due to server error');
       });
-      
-      // Still invalidate to ensure UI is consistent
-      queryClient.invalidateQueries({ queryKey: ['tabs'] })
     }
   }, [tabs, queryClient, saveTabMutation])
   

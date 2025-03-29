@@ -36,22 +36,6 @@ export function VirtualizedTabList({
 }: VirtualizedTabListProps) {
   const parentRef = useRef<HTMLDivElement>(null)
   
-  // Dynamic row height calculation
-  const estimateSize = useCallback(
-    (index: number) => {
-      const tab = tabs[index]
-      return estimateRowHeight(expandedTabId === tab.id)
-    },
-    [tabs, expandedTabId]
-  )
-  
-  const rowVirtualizer = useVirtualizer({
-    count: tabs.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize,
-    overscan: 5,
-  })
-  
   // Calculate column count based on viewport width
   // We'll implement a simple responsive grid
   const getColCount = () => {
@@ -64,13 +48,25 @@ export function VirtualizedTabList({
   }
   
   const colCount = getColCount()
-  
-  // Group tabs into rows for the grid
-  const groupedTabs = []
+
+  // Group tabs into rows for the grid layout
+  const rows = []
   for (let i = 0; i < tabs.length; i += colCount) {
-    groupedTabs.push(tabs.slice(i, i + colCount))
+    rows.push(tabs.slice(i, i + colCount))
   }
-  
+
+  // Virtualize at the row level, not individual tab level
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: (index) => {
+      const rowTabs = rows[index]
+      const hasExpandedTab = rowTabs.some(tab => expandedTabId === tab.id)
+      return estimateRowHeight(hasExpandedTab)
+    },
+    overscan: 5,
+  })
+
   return (
     <div 
       ref={parentRef} 
@@ -88,8 +84,7 @@ export function VirtualizedTabList({
       >
         <AnimatePresence>
           {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-            const row = Math.floor(virtualRow.index / colCount)
-            const rowTabs = tabs.slice(row * colCount, (row + 1) * colCount)
+            const rowTabs = rows[virtualRow.index];
             
             return (
               <div

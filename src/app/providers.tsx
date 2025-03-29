@@ -7,6 +7,7 @@ import { TabsProvider } from '@/context/TabsContext'
 import { FoldersProvider } from '@/context/FoldersContext'
 import { UIProvider } from '@/context/UIContext'
 import { TabProvider } from '@/context/TabContext'
+import { AuthProvider } from '@/context/AuthContext'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -29,15 +30,17 @@ export function Providers({ children }: { children: ReactNode }) {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <TabProvider>
-            <TabsProvider>
-              <FoldersProvider>
-                <UIProvider>
-                  {mounted && children}
-                </UIProvider>
-              </FoldersProvider>
-            </TabsProvider>
-          </TabProvider>
+          <AuthProvider>
+            <TabProvider>
+              <TabsProvider>
+                <FoldersProvider>
+                  <UIProvider>
+                    {mounted && children}
+                  </UIProvider>
+                </FoldersProvider>
+              </TabsProvider>
+            </TabProvider>
+          </AuthProvider>
         </ThemeProvider>
       </QueryClientProvider>
     </ErrorBoundary>
