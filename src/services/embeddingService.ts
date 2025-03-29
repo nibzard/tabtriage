@@ -3,7 +3,7 @@ import { supabase } from '@/utils/supabase'
 import { Tab } from '@/types/Tab'
 
 /**
- * Generate an embedding for text using OpenAI's API
+ * Generate an embedding for text using GTE-Small model (native to Supabase)
  */
 export async function generateEmbedding(text: string): Promise<number[] | null> {
   try {
@@ -12,15 +12,36 @@ export async function generateEmbedding(text: string): Promise<number[] | null> 
       return null
     }
 
-    // Truncate text if it's too long (OpenAI has token limits)
+    // Truncate text if it's too long
     const truncatedText = text.substring(0, 8000)
     
+    // Try to use Supabase's native GTE-Small model for embeddings
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-embeddings', {
+        body: { text: truncatedText }
+      })
+      
+      if (error) {
+        throw new Error(`Supabase function error: ${error.message}`)
+      }
+      
+      if (data && data.embedding) {
+        logger.debug('Successfully generated embedding using Supabase GTE-Small')
+        return data.embedding
+      }
+    } catch (supabaseError) {
+      logger.warn('Failed to generate embedding with Supabase:', supabaseError)
+      // Fall back to OpenAI if available
+    }
+    
+    // Fallback to OpenAI if Supabase function failed
     if (!process.env.OPENAI_API_KEY) {
-      logger.error('OpenAI API key not found')
+      logger.error('OpenAI API key not found for fallback embedding generation')
       // Return a mock embedding for development without API key
-      return Array(512).fill(0).map(() => Math.random() - 0.5)
+      return Array(384).fill(0).map(() => Math.random() - 0.5)
     }
 
+    logger.debug('Falling back to OpenAI for embedding generation')
     const response = await fetch('https://api.openai.com/v1/embeddings', {
       method: 'POST',
       headers: {
@@ -30,7 +51,7 @@ export async function generateEmbedding(text: string): Promise<number[] | null> 
       body: JSON.stringify({
         model: 'text-embedding-3-small',
         input: truncatedText,
-        dimensions: 512
+        dimensions: 384
       })
     })
 
