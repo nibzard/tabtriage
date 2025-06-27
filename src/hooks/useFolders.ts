@@ -2,7 +2,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Folder } from '@/types/Folder'
 import { folderApi } from '@/utils/api-client'
 import { logger } from '@/utils/logger'
-import { ensureSession } from '@/utils/auth-helper'
 import { generateUUID } from '@/utils/uuid'
 
 /**
@@ -21,7 +20,6 @@ export function useFolders() {
     queryKey: ['folders'],
     queryFn: async () => {
       try {
-        await ensureSession()
         return await folderApi.getFolders()
       } catch (error) {
         logger.warn('Failed to fetch folders from server:', error)
@@ -36,7 +34,6 @@ export function useFolders() {
   // Mutation for saving/updating folders
   const saveFolderMutation = useMutation({
     mutationFn: async (folder: Folder) => {
-      await ensureSession()
       return await folderApi.saveFolder(folder)
     },
     onMutate: async (newFolder) => {
@@ -70,7 +67,6 @@ export function useFolders() {
   // Mutation for deleting folders
   const deleteFolderMutation = useMutation({
     mutationFn: async (folderId: string) => {
-      await ensureSession()
       return await folderApi.deleteFolder(folderId)
     },
     onMutate: async (folderId) => {

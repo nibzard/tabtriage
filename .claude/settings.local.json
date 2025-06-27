@@ -14,7 +14,9 @@
       "mcp__playwright__browser_take_screenshot",
       "mcp__playwright__browser_press_key",
       "Bash(sqlite3:*)",
-      "Bash(rg:*)"
+      "Bash(rg:*)",
+      "Bash(npx tsx:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": []
   }

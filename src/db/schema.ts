@@ -1,16 +1,55 @@
 import { sql } from 'drizzle-orm';
-import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, primaryKey } from 'drizzle-orm/sqlite-core';
 
-// Users table
-export const users = sqliteTable('users', {
-  id: text('id').primaryKey(),
-  email: text('email').unique(),
-  displayName: text('display_name'),
-  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({
-  emailIdx: uniqueIndex('users_email_idx').on(table.email),
-}));
+export const users = sqliteTable("users", {
+  id: text("id").notNull().primaryKey(),
+  name: text("name"),
+  email: text("email").notNull(),
+  emailVerified: integer("emailVerified", { mode: "timestamp_ms" }),
+  image: text("image"),
+})
+
+export const accounts = sqliteTable(
+  "accounts",
+  {
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    provider: text("provider").notNull(),
+    providerAccountId: text("providerAccountId").notNull(),
+    refresh_token: text("refresh_token"),
+    access_token: text("access_token"),
+    expires_at: integer("expires_at"),
+    token_type: text("token_type"),
+    scope: text("scope"),
+    id_token: text("id_token"),
+    session_state: text("session_state"),
+  },
+  (account) => ({
+    compoundKey: primaryKey({ columns: [account.provider, account.providerAccountId] }),
+  })
+)
+
+export const sessions = sqliteTable("sessions", {
+  sessionToken: text("sessionToken").notNull().primaryKey(),
+  userId: text("userId")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  expires: integer("expires", { mode: "timestamp_ms" }).notNull(),
+})
+
+export const verificationTokens = sqliteTable(
+  "verificationTokens",
+  {
+    identifier: text("identifier").notNull(),
+    token: text("token").notNull(),
+    expires: integer("expires", { mode: "timestamp_ms" }).notNull(),
+  },
+  (vt) => ({
+    compoundKey: primaryKey({ columns: [vt.identifier, vt.token] }),
+  })
+)
 
 // Folders table
 export const folders = sqliteTable('folders', {
@@ -21,10 +60,7 @@ export const folders = sqliteTable('folders', {
   icon: text('icon'),
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({
-  userIdIdx: index('folders_user_id_idx').on(table.userId),
-  userNameUnique: uniqueIndex('folders_user_name_unique').on(table.userId, table.name),
-}));
+});
 
 // Tabs table
 export const tabs = sqliteTable('tabs', {
@@ -40,15 +76,10 @@ export const tabs = sqliteTable('tabs', {
   screenshotUrl: text('screenshot_url'),
   fullScreenshotUrl: text('full_screenshot_url'),
   status: text('status', { enum: ['unprocessed', 'kept', 'discarded'] }).default('unprocessed'),
-  embedding: text('embedding'), // F32_BLOB(1024) - 1024-dimensional vector for Jina v3 (stored as text in Drizzle)
+  embedding: text('embedding_vector'), // F32_BLOB(1024) - 1024-dimensional vector for Jina v3
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({
-  userIdIdx: index('tabs_user_id_idx').on(table.userId),
-  folderIdIdx: index('tabs_folder_id_idx').on(table.folderId),
-  domainIdx: index('tabs_domain_idx').on(table.domain),
-  dateAddedIdx: index('tabs_date_added_idx').on(table.dateAdded),
-}));
+});
 
 // Tags table
 export const tags = sqliteTable('tags', {
@@ -56,10 +87,7 @@ export const tags = sqliteTable('tags', {
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
-}, (table) => ({
-  userIdIdx: index('tags_user_id_idx').on(table.userId),
-  userNameUnique: uniqueIndex('tags_user_name_unique').on(table.userId, table.name),
-}));
+});
 
 // Tab tags junction table
 export const tabTags = sqliteTable('tab_tags', {

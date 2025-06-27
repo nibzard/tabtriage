@@ -11,6 +11,8 @@ const Dialog = DialogPrimitive.Root
 const DialogTrigger = DialogPrimitive.Trigger
 const DialogPortal = DialogPrimitive.Portal
 const DialogClose = DialogPrimitive.Close
+const DialogTitle = DialogPrimitive.Title
+const DialogDescription = DialogPrimitive.Description
 
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
@@ -68,13 +70,15 @@ export function ScreenshotPreviewModal({
   title,
   url
 }: ScreenshotPreviewModalProps) {
-  // Use full-height screenshot for preview if available, otherwise fall back to thumbnail
-  const previewUrl = fullScreenshotUrl || screenshotUrl
-  const isFullHeight = !!fullScreenshotUrl
+  const isValidUrl = (url?: string) => url && (url.startsWith('http') || url.startsWith('data:'));
+  const previewUrl = isValidUrl(fullScreenshotUrl) ? fullScreenshotUrl : screenshotUrl
+  const isFullHeight = isValidUrl(fullScreenshotUrl)
   
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-6xl max-h-[95vh] overflow-hidden">
+        <DialogTitle className="sr-only">{title || 'Screenshot Preview'}</DialogTitle>
+        <DialogDescription className="sr-only">A preview of the screenshot for the tab: {title}</DialogDescription>
         <div className="flex flex-col space-y-4">
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -98,29 +102,35 @@ export function ScreenshotPreviewModal({
           </div>
           
           <div className="relative w-full max-h-[70vh] bg-gray-100 dark:bg-gray-800 rounded-lg overflow-auto">
-            {previewUrl.startsWith('data:') ? (
-              <img 
-                src={previewUrl} 
-                alt={title}
-                className={`w-full ${isFullHeight ? 'h-auto' : 'h-full object-contain'}`}
-                onError={() => {
-                  console.error(`Failed to load data URL image in preview`)
-                }}
-              />
-            ) : (
-              <div className="relative w-full min-h-[400px]">
-                <Image
-                  src={previewUrl}
+            {previewUrl && isValidUrl(previewUrl) ? (
+              previewUrl.startsWith('data:') ? (
+                <img 
+                  src={previewUrl} 
                   alt={title}
-                  width={0}
-                  height={0}
-                  sizes="100vw"
                   className={`w-full ${isFullHeight ? 'h-auto' : 'h-full object-contain'}`}
-                  priority
                   onError={() => {
-                    console.error(`Failed to load image in preview: ${previewUrl}`)
+                    console.error(`Failed to load data URL image in preview`)
                   }}
                 />
+              ) : (
+                <div className="relative w-full min-h-[400px]">
+                  <Image
+                    src={previewUrl}
+                    alt={title}
+                    width={0}
+                    height={0}
+                    sizes="100vw"
+                    className={`w-full ${isFullHeight ? 'h-auto' : 'h-full object-contain'}`}
+                    priority
+                    onError={() => {
+                      console.error(`Failed to load image in preview: ${previewUrl}`)
+                    }}
+                  />
+                </div>
+              )
+            ) : (
+              <div className="flex items-center justify-center h-64">
+                <p className="text-muted-foreground">Image not available</p>
               </div>
             )}
           </div>
@@ -152,4 +162,4 @@ export function ScreenshotPreviewModal({
   )
 }
 
-export { Dialog, DialogTrigger, DialogContent, DialogOverlay, DialogClose }
+export { Dialog, DialogTrigger, DialogContent, DialogOverlay, DialogClose, DialogTitle, DialogDescription }

@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
-import { Home, Upload, Layers, User } from 'lucide-react'
+import { LayoutDashboard, Upload, Layers, User } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 export function MobileNavigation() {
@@ -10,9 +10,9 @@ export function MobileNavigation() {
 
   const navigation = [
     {
-      name: 'Home',
-      href: '/',
-      icon: Home,
+      name: 'Dashboard',
+      href: '/dashboard',
+      icon: LayoutDashboard,
       description: 'Dashboard'
     },
     {

@@ -1,11 +1,10 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useRef } from 'react'
 import { Tab } from '@/types/Tab'
-import { TabCardMobile } from './TabCardMobile'
+import { TabCard } from './TabCard'
 import { useTabs } from '@/hooks/useTabs'
 import { useBulkActions, useResponsive } from '@/hooks/useUI'
 import { Button } from '@/components/ui/button'
@@ -13,7 +12,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { 
   CheckSquare, 
-  Square, 
   Trash2, 
   Heart, 
   Loader2,
@@ -36,7 +34,7 @@ export function TabGalleryModern({
   isSearching,
   showingDiscarded
 }: TabGalleryModernProps) {
-  const { tabs, keepTab, discardTab, deleteTab, assignToFolder } = useTabs()
+  const { tabs, keepTab, discardTab, deleteTab, assignToFolder, createFolder } = useTabs()
   const { 
     selectedTabs, 
     isTabSelected, 
@@ -46,39 +44,32 @@ export function TabGalleryModern({
   } = useBulkActions()
   const { isMobile } = useResponsive()
   const parentRef = useRef<HTMLDivElement>(null)
+  const [draggedTab, setDraggedTab] = useState<Tab | null>(null)
 
-  // Filter tabs based on criteria
   const filteredTabs = useMemo(() => {
-    // Use search results if available
     if (searchTerm && searchResults.length > 0) {
       return searchResults
     }
-
-    // Filter by status and category
     return tabs.filter(tab => {
       if (activeFilter === 'all') return tab.status === 'unprocessed'
       if (activeFilter === 'kept') return tab.status === 'kept'
       if (activeFilter === 'discarded') return tab.status === 'discarded'
-      
-      // Category filter
       const categoryMatch = tab.category === activeFilter && tab.status === 'unprocessed'
       return categoryMatch
     })
   }, [tabs, activeFilter, searchTerm, searchResults])
 
-  // Calculate responsive grid columns
   const getColumnCount = () => {
     if (typeof window === 'undefined') return 1
     const width = window.innerWidth
-    if (width < 640) return 1 // Mobile
-    if (width < 1024) return 2 // Tablet
-    if (width < 1536) return 3 // Desktop
-    return 4 // Large desktop
+    if (width < 640) return 1
+    if (width < 1024) return 2
+    if (width < 1536) return 3
+    return 4
   }
 
   const columnCount = getColumnCount()
 
-  // Group tabs into rows for virtualization
   const rows = useMemo(() => {
     const result: Tab[][] = []
     for (let i = 0; i < filteredTabs.length; i += columnCount) {
@@ -87,15 +78,13 @@ export function TabGalleryModern({
     return result
   }, [filteredTabs, columnCount])
 
-  // Setup virtualization
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => isMobile ? 320 : 280, // Estimated row height
+    estimateSize: () => isMobile ? 320 : 280,
     overscan: 3,
   })
 
-  // Bulk action handlers
   const handleBulkKeep = () => {
     selectedTabs.forEach(tabId => keepTab(tabId))
     clearSelectedTabs()
@@ -117,7 +106,11 @@ export function TabGalleryModern({
     selectAllTabs(filteredTabs.map(tab => tab.id))
   }
 
-  // Loading state
+  const handleCreateFolderAndAssign = async (tabId: string, folderName: string) => {
+    const newFolder = await createFolder(folderName)
+    await assignToFolder(tabId, newFolder.id)
+  }
+
   if (isSearching) {
     return (
       <Card className="p-8">
@@ -129,7 +122,6 @@ export function TabGalleryModern({
     )
   }
 
-  // Empty state
   if (filteredTabs.length === 0) {
     const isEmptySearch = searchTerm && searchResults.length === 0
     
@@ -164,7 +156,6 @@ export function TabGalleryModern({
 
   return (
     <div className="space-y-4">
-      {/* Bulk Actions Bar */}
       {selectedTabs.size > 0 ? (
         <Card className="p-4">
           <CardContent className="p-0">
@@ -186,42 +177,22 @@ export function TabGalleryModern({
               <div className="flex items-center gap-2">
                 {showingDiscarded ? (
                   <>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={handleBulkKeep}
-                      className="touch-target"
-                    >
+                    <Button size="sm" variant="outline" onClick={handleBulkKeep} className="touch-target">
                       <Heart className="h-4 w-4 mr-1" />
                       Restore
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={handleBulkDelete}
-                      className="touch-target"
-                    >
+                    <Button size="sm" variant="destructive" onClick={handleBulkDelete} className="touch-target">
                       <Trash2 className="h-4 w-4 mr-1" />
                       Delete
                     </Button>
                   </>
                 ) : (
                   <>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={handleBulkKeep}
-                      className="touch-target"
-                    >
+                    <Button size="sm" variant="outline" onClick={handleBulkKeep} className="touch-target">
                       <Heart className="h-4 w-4 mr-1" />
                       Keep
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={handleBulkDiscard}
-                      className="touch-target"
-                    >
+                    <Button size="sm" variant="destructive" onClick={handleBulkDiscard} className="touch-target">
                       <Trash2 className="h-4 w-4 mr-1" />
                       Discard
                     </Button>
@@ -236,12 +207,7 @@ export function TabGalleryModern({
           <CardContent className="p-0">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleSelectAll}
-                  className="touch-target"
-                >
+                <Button variant="ghost" size="sm" onClick={handleSelectAll} className="touch-target">
                   <CheckSquare className="h-4 w-4 mr-2" />
                   Select All ({filteredTabs.length})
                 </Button>
@@ -257,14 +223,10 @@ export function TabGalleryModern({
         </Card>
       )}
 
-
-      {/* Virtualized Tab Grid */}
       <div
         ref={parentRef}
         className="h-[calc(100vh-300px)] overflow-auto scrollbar-thin scrollbar-thumb-muted scrollbar-track-background"
-        style={{
-          paddingBottom: isMobile ? '80px' : '20px', // Extra padding for mobile nav
-        }}
+        style={{ paddingBottom: isMobile ? '80px' : '20px' }}
       >
         <div
           style={{
@@ -290,10 +252,7 @@ export function TabGalleryModern({
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                 >
-                  <div className={`
-                    grid gap-4 p-2
-                    ${isMobile ? 'mobile-grid-1' : 'mobile-grid'}
-                  `}>
+                  <div className={`grid gap-4 p-2 ${isMobile ? 'mobile-grid-1' : 'mobile-grid'}`}>
                     {rowTabs.map((tab) => (
                       <motion.div
                         key={tab.id}
@@ -303,12 +262,17 @@ export function TabGalleryModern({
                         transition={{ duration: 0.3 }}
                         className="relative"
                       >
-                        <TabCardMobile
+                        <TabCard
                           tab={tab}
                           isSelected={isTabSelected(tab.id)}
                           onToggleSelect={() => toggleTabSelection(tab.id)}
                           onKeep={keepTab}
                           onDiscard={showingDiscarded ? deleteTab : discardTab}
+                          onDelete={deleteTab}
+                          onAssignToFolder={assignToFolder}
+                          onCreateFolderAndAssign={handleCreateFolderAndAssign}
+                          onDragStart={setDraggedTab}
+                          onDragEnd={() => setDraggedTab(null)}
                           showActions={true}
                           searchTerm={searchTerm}
                         />

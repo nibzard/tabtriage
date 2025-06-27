@@ -3,7 +3,6 @@ import { logger } from '@/utils/logger'
 // Function to generate a summary using OpenAI GPT-4o-mini
 export async function generateSummaryWithAI(url: string, pageContent: string): Promise<{
   summary: string;
-  category: string;
   tags: string[];
 }> {
   try {
@@ -11,7 +10,6 @@ export async function generateSummaryWithAI(url: string, pageContent: string): P
 
     // Default fallback values
     let summary = 'No summary available.'
-    let category = 'uncategorized'
     let tags: string[] = []
 
     // If we have page content, we can generate a better summary
@@ -30,7 +28,7 @@ export async function generateSummaryWithAI(url: string, pageContent: string): P
               messages: [
                 {
                   role: 'system',
-                  content: 'You are a helpful assistant that summarizes web pages. Provide a concise summary (30-50 words), a category (news, shopping, reference, social, entertainment, productivity, technology, health, travel, finance, education, other), and 2-4 relevant tags. Format your response as JSON with fields "summary", "category", and "tags" (array).'
+                  content: 'You are a helpful assistant that summarizes web pages. Provide a concise summary (30-50 words) and 2-4 relevant tags. Format your response as JSON with fields "summary" and "tags" (array).'
                 },
                 {
                   role: 'user',
@@ -53,7 +51,6 @@ export async function generateSummaryWithAI(url: string, pageContent: string): P
             // Try to parse as JSON
             const aiResponse = JSON.parse(aiResponseText)
             summary = aiResponse.summary || summary
-            category = aiResponse.category || category
             tags = aiResponse.tags || tags
 
             logger.debug(`Successfully parsed AI response as JSON for ${url}`)
@@ -67,12 +64,6 @@ export async function generateSummaryWithAI(url: string, pageContent: string): P
               summary = summaryMatch[1].trim()
             }
 
-            // Extract category
-            const categoryMatch = aiResponseText.match(/category.*?:.*?["']?(.*?)["']?[,\n]/i)
-            if (categoryMatch && categoryMatch[1]) {
-              category = categoryMatch[1].trim().toLowerCase()
-            }
-
             // Extract tags
             const tagsMatch = aiResponseText.match(/tags.*?:.*?\[(.*?)\]/i)
             if (tagsMatch && tagsMatch[1]) {
@@ -83,7 +74,7 @@ export async function generateSummaryWithAI(url: string, pageContent: string): P
           }
 
           logger.debug(`Generated AI summary for ${url}: ${summary.substring(0, 50)}...`)
-          return { summary, category, tags }
+          return { summary, tags }
         } catch (apiError) {
           logger.error(`Error calling OpenAI API for ${url}:`, apiError)
           // Fall back to simulation if API call fails
@@ -93,7 +84,6 @@ export async function generateSummaryWithAI(url: string, pageContent: string): P
       // For now, generate a simulated response based on the URL and content
       const simulatedResponse = simulateAIResponse(url, pageContent)
       summary = simulatedResponse.summary
-      category = simulatedResponse.category
       tags = simulatedResponse.tags
     } else {
       // If no content, generate based on URL only
@@ -102,21 +92,6 @@ export async function generateSummaryWithAI(url: string, pageContent: string): P
 
       // Generate a simple summary based on the domain
       summary = `This is a page from ${domain}.`
-
-      // Determine category based on domain keywords
-      if (domain.includes('news') || domain.includes('blog')) {
-        category = 'news'
-      } else if (domain.includes('shop') || domain.includes('store') || domain.includes('amazon')) {
-        category = 'shopping'
-      } else if (domain.includes('wiki') || domain.includes('docs')) {
-        category = 'reference'
-      } else if (domain.includes('facebook') || domain.includes('twitter') || domain.includes('instagram')) {
-        category = 'social'
-      } else if (domain.includes('youtube') || domain.includes('netflix') || domain.includes('game')) {
-        category = 'entertainment'
-      } else {
-        category = 'uncategorized'
-      }
 
       // Generate tags from domain and URL path
       const potentialTags = [...domain.split('.'), ...urlParts.slice(3)]
@@ -130,7 +105,6 @@ export async function generateSummaryWithAI(url: string, pageContent: string): P
 
     return {
       summary,
-      category,
       tags
     }
   } catch (error) {
@@ -139,7 +113,6 @@ export async function generateSummaryWithAI(url: string, pageContent: string): P
     // Return default values on error
     return {
       summary: 'Failed to generate summary.',
-      category: 'uncategorized',
       tags: ['error']
     }
   }
@@ -148,7 +121,6 @@ export async function generateSummaryWithAI(url: string, pageContent: string): P
 // Function to simulate AI response for development
 function simulateAIResponse(url: string, content: string): {
   summary: string;
-  category: string;
   tags: string[];
 } {
   // Extract domain from URL
@@ -169,27 +141,6 @@ function simulateAIResponse(url: string, content: string): {
     summary = `This page from ${domain} contains information that might be relevant to your interests.`
   }
 
-  // Determine category based on content and URL keywords
-  let category = 'uncategorized'
-  const contentLower = content.toLowerCase()
-  const urlLower = url.toLowerCase()
-
-  if (contentLower.includes('news') || contentLower.includes('article') || domain.includes('news')) {
-    category = 'news'
-  } else if (contentLower.includes('buy') || contentLower.includes('price') || contentLower.includes('shop')) {
-    category = 'shopping'
-  } else if (contentLower.includes('learn') || contentLower.includes('guide') || contentLower.includes('documentation')) {
-    category = 'reference'
-  } else if (domain.includes('facebook') || domain.includes('twitter') || domain.includes('instagram')) {
-    category = 'social'
-  } else if (domain.includes('youtube') || domain.includes('netflix') || urlLower.includes('game')) {
-    category = 'entertainment'
-  } else if (contentLower.includes('code') || contentLower.includes('programming') || domain.includes('github')) {
-    category = 'technology'
-  } else if (contentLower.includes('travel') || contentLower.includes('vacation') || contentLower.includes('hotel')) {
-    category = 'travel'
-  }
-
   // Generate tags from content
   const potentialTags = [
     'article', 'blog', 'news', 'shopping', 'product', 'review', 'guide', 'tutorial',
@@ -198,17 +149,16 @@ function simulateAIResponse(url: string, content: string): {
   ]
 
   const tags = potentialTags
-    .filter(tag => contentLower.includes(tag) || urlLower.includes(tag))
+    .filter(tag => content.toLowerCase().includes(tag) || url.toLowerCase().includes(tag))
     .slice(0, 3)
 
   // Add at least one tag if none were found
   if (tags.length === 0) {
-    tags.push(category)
+    tags.push('general')
   }
 
   return {
     summary,
-    category,
     tags
   }
 }

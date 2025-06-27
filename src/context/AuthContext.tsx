@@ -1,9 +1,8 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext } from 'react'
+import { useSession } from 'next-auth/react'
 import { User } from '@/components/auth/UserMenu'
-import { logger } from '@/utils/logger'
-import { getCurrentUserId } from '@/utils/auth-helper'
 
 type AuthContextType = {
   user: User | null
@@ -18,26 +17,16 @@ const AuthContext = createContext<AuthContextType>({
 export const useAuth = () => useContext(AuthContext)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const { data: session, status } = useSession()
+  const isLoading = status === 'loading'
 
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const userId = await getCurrentUserId()
-        setUser({
-          id: userId,
-          isAnonymous: true
-        })
-      } catch (error) {
-        logger.error('Error fetching user:', error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    fetchUser()
-  }, [])
+  const user = session ? {
+    id: session.user.id,
+    name: session.user.name,
+    email: session.user.email,
+    image: session.user.image,
+    isAnonymous: false
+  } : null
 
   return (
     <AuthContext.Provider value={{ user, isLoading }}>

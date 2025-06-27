@@ -69,7 +69,7 @@ export async function GET() {
         summary: tab.summary || '',
         category: tab.category || 'uncategorized',
         screenshot: tab.screenshotUrl,
-        fullScreenshot: tab.fullScreenshotUrl,
+        fullScreenshot: tab.fullScreenshotUrl || undefined,
         status: tab.status || 'unprocessed',
         tags: tabTagsList,
         folderId: tab.folderId,

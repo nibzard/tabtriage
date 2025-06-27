@@ -251,6 +251,8 @@ export async function parseTabsFromFile(file: File): Promise<Tab[]> {
   });
 }
 
+import { categorizeTabWithAI } from './aiCategorizationService'
+
 // Process tabs with AI and capture screenshots
 export async function processTabsWithAI(tabs: Tab[]): Promise<Tab[]> {
   // Process in batches to avoid overwhelming the system
@@ -272,9 +274,10 @@ export async function processTabsWithAI(tabs: Tab[]): Promise<Tab[]> {
         logger.debug(`Fetching content for ${tab.url}`)
         const pageContent = await fetchPageContent(tab.url)
 
-        // Step 3: Generate AI summary
+        // Step 3: Generate AI summary and categorize
         logger.debug(`Generating AI summary for ${tab.url}`)
-        const { summary, category, tags } = await generateSummaryWithAI(tab.url, pageContent || '')
+        const { summary, tags } = await generateSummaryWithAI(tab.url, pageContent || '')
+        const category = await categorizeTabWithAI(tab.url, pageContent || '')
 
         // Step 4: Generate folder suggestions based on category
         const suggestedFolders = generateFolderSuggestions(category, tags)

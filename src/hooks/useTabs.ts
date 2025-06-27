@@ -2,7 +2,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Tab } from '@/types/Tab'
 import { tabApi } from '@/utils/api-client'
 import { logger } from '@/utils/logger'
-import { ensureSession } from '@/utils/auth-helper'
 import { getTabs as getLocalTabs, saveTabs as saveLocalTabs } from '@/services/tabService'
 
 /**
@@ -21,13 +20,16 @@ export function useTabs() {
     queryKey: ['tabs'],
     queryFn: async () => {
       try {
-        // Try server first
-        await ensureSession()
+        // The API route will handle session checks
         return await tabApi.getTabs()
       } catch (error) {
         logger.warn('Failed to fetch tabs from server, using local storage:', error)
         // Fallback to local storage
-        return getLocalTabs()
+        const localTabs = getLocalTabs()
+        return localTabs.map(tab => ({
+          ...tab,
+          fullScreenshot: tab.fullScreenshot || undefined,
+        }))
       }
     },
     staleTime: 1000 * 60 * 2, // 2 minutes
@@ -38,7 +40,6 @@ export function useTabs() {
   const saveTabMutation = useMutation({
     mutationFn: async (tab: Tab) => {
       try {
-        await ensureSession()
         return await tabApi.saveTab(tab)
       } catch (error) {
         logger.warn('Failed to save tab to server, saving locally:', error)
@@ -91,7 +92,6 @@ export function useTabs() {
   const deleteTabMutation = useMutation({
     mutationFn: async (tabId: string) => {
       try {
-        await ensureSession()
         return await tabApi.deleteTab(tabId)
       } catch (error) {
         logger.warn('Failed to delete tab from server, deleting locally:', error)

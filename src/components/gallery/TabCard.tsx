@@ -1,264 +1,308 @@
 'use client'
 
-import { memo, useState } from 'react'
-import Image from 'next/image'
-import { motion } from 'framer-motion'
-import { Tab } from '@/types/Tab'
+import { useState, useRef } from 'react'
+import { motion, PanInfo, useAnimation } from 'framer-motion'
+import { Heart, Trash2, Folder, MoreVertical, Check, X, ExternalLink, FolderPlus } from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu'
+import { useTabs } from '@/hooks/useTabs'
+import { useBulkActions } from '@/hooks/useUI'
 import { useFoldersContextSafe } from '@/context/FoldersContext'
+import { Tab } from '@/types/Tab'
+import { HighlightedText, SearchSnippet } from '@/components/ui/HighlightedText'
 import { ScreenshotPreviewModal } from '@/components/ui/screenshot-preview-modal'
 
 interface TabCardProps {
   tab: Tab
-  isExpanded: boolean
   isSelected?: boolean
-  onToggleExpand: () => void
   onToggleSelect?: () => void
-  onKeep: () => void
-  onDiscard: () => void
-  onAssignFolder: (folderId: string) => void
+  onKeep?: (tabId: string) => void
+  onDiscard?: (tabId: string) => void
+  onDelete?: (tabId: string) => void
+  onAssignToFolder?: (tabId: string, folderId: string) => void
+  onCreateFolderAndAssign?: (tabId: string, folderName: string) => void
+  onDragStart?: (tab: Tab) => void
+  onDragEnd?: () => void
+  showActions?: boolean
+  searchTerm?: string
 }
 
-export const TabCard = memo(function TabCard({
-  tab,
-  isExpanded,
-  isSelected = false,
-  onToggleExpand,
+export function TabCard({ 
+  tab, 
+  isSelected: propIsSelected,
   onToggleSelect,
-  onKeep,
+  onKeep, 
   onDiscard,
-  onAssignFolder,
+  onDelete,
+  onAssignToFolder, 
+  onCreateFolderAndAssign,
+  onDragStart,
+  onDragEnd,
+  showActions = true,
+  searchTerm = ''
 }: TabCardProps) {
-  const { folders } = useFoldersContextSafe()
+  const [isExpanded, setIsExpanded] = useState(false)
+  const [dragDirection, setDragDirection] = useState<'left' | 'right' | null>(null)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+  const controls = useAnimation()
+  const constraintsRef = useRef(null)
   
-  // Get folder name if tab is assigned to a folder
-  const folder = tab.folderId ? folders.find(f => f.id === tab.folderId) : null
+  const { keepTab, discardTab, deleteTab } = useTabs()
+  const { isTabSelected, toggleTabSelection } = useBulkActions()
+  const { folders, createFolder } = useFoldersContextSafe()
   
-  return (
-    <motion.div 
-      layout
-      initial={{ scale: 0.98, opacity: 0.8 }}
-      animate={{ scale: 1, opacity: 1 }}
-      whileHover={{ y: -2, transition: { duration: 0.2 } }}
-      className={`bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden flex flex-col h-full transform transition-transform relative
-                 ${tab.status === 'discarded' ? 'border-l-4 border-l-red-500' : 
-                   tab.status === 'kept' ? 'border-l-4 border-l-green-500' : ''}
-                 ${isSelected ? 'ring-2 ring-primary bg-primary/5' : ''}`}
-    >
-      {/* Screenshot/Header - Larger and more prominent */}
-      <div className="relative">
-        {tab.screenshot ? (
-          <div 
-            className="relative h-40 overflow-hidden cursor-pointer group"
-            onClick={() => setIsPreviewOpen(true)}
-          >
-            {tab.screenshot.startsWith('data:') ? (
-              // Handle data URLs directly with an img tag
-              <img 
-                src={tab.screenshot} 
-                alt={tab.title}
-                className="object-cover w-full h-full transition-transform group-hover:scale-105"
-                onError={() => {
-                  console.error(`Failed to load data URL image`)
-                }}
-              />
-            ) : (
-              // Use Next.js Image for URLs
-              <Image
-                src={tab.screenshot}
-                alt={tab.title}
-                width={400}
-                height={225}
-                className="object-cover w-full h-full transition-transform group-hover:scale-105"
-                priority={false}
-                loading="lazy"
-                onError={() => {
-                  console.error(`Failed to load image: ${tab.screenshot}`)
-                }}
-              />
-            )}
-            {/* Preview overlay */}
-            <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-              <div className="bg-white/90 dark:bg-gray-800/90 px-3 py-2 rounded-lg backdrop-blur-sm">
-                <span className="text-gray-800 dark:text-gray-200 text-sm font-medium">Click to preview</span>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="relative h-40 bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
-            <div className="flex flex-col items-center justify-center">
-              <div className="w-12 h-12 rounded-full bg-primary-100 dark:bg-primary-800 flex items-center justify-center mb-2">
-                <span className="text-primary-600 dark:text-primary-300 text-xl font-bold">
-                  {(tab.domain && tab.domain.charAt(0).toUpperCase()) || '?'}
-                </span>
-              </div>
-              <span className="text-gray-600 dark:text-gray-300 text-sm">{tab.domain || 'No domain available'}</span>
-            </div>
-          </div>
-        )}
-        
-        {/* Selection checkbox */}
-        {onToggleSelect && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onToggleSelect()
-            }}
-            className="absolute top-2 left-2 z-20 w-6 h-6 rounded-full border-2 border-white bg-white/80 backdrop-blur-sm flex items-center justify-center hover:bg-white transition-colors"
-          >
-            {isSelected && (
-              <svg className="w-4 h-4 text-primary-600" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-              </svg>
-            )}
-          </button>
-        )}
+  const isSelected = propIsSelected ?? isTabSelected(tab.id)
+  const handleToggleSelect = onToggleSelect || (() => toggleTabSelection(tab.id))
+  const [newFolderName, setNewFolderName] = useState('')
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false)
 
-        {/* Status badge */}
-        {tab.status !== 'unprocessed' && (
-          <div className={`absolute top-2 right-2 px-2 py-1 rounded-full text-xs font-medium text-white ${tab.status === 'kept' ? 'bg-green-500' : 'bg-red-500'}`}>
-            {tab.status === 'kept' ? 'Kept' : 'Discarded'}
-          </div>
-        )}
-        
-        {/* Folder badge */}
-        {folder && (
-          <div 
-            className="absolute bottom-2 right-2 px-2 py-1 rounded-full text-xs font-medium text-white"
-            style={{ backgroundColor: folder.color || '#4B5563' }}
-          >
-            {folder.name}
-          </div>
-        )}
-        
-        {/* Category badge - New feature */}
-        {tab.category && tab.category !== 'uncategorized' && !folder && (
-          <div className="absolute bottom-2 left-2 px-2 py-1 rounded-full text-xs font-medium bg-gray-700/70 text-white">
-            {tab.category}
-          </div>
-        )}
+  const handleSwipeDragEnd = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    const threshold = 100
+    const velocity = info.velocity.x
+    const offset = info.offset.x
+
+    if (Math.abs(offset) > threshold || Math.abs(velocity) > 500) {
+      if (offset > 0) {
+        handleKeep()
+      } else {
+        handleDiscard()
+      }
+    } else {
+      controls.start({ x: 0, transition: { type: 'spring', stiffness: 300, damping: 30 } })
+      setDragDirection(null)
+    }
+  }
+
+  const handleSwipeDrag = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    const offset = info.offset.x
+    if (Math.abs(offset) > 20) {
+      setDragDirection(offset > 0 ? 'right' : 'left')
+    } else {
+      setDragDirection(null)
+    }
+  }
+
+  const handleKeep = () => onKeep ? onKeep(tab.id) : keepTab(tab.id)
+  const handleDiscard = () => onDiscard ? onDiscard(tab.id) : discardTab(tab.id)
+  const handleDelete = () => onDelete ? onDelete(tab.id) : deleteTab(tab.id)
+  const handleCardTap = () => setIsExpanded(!isExpanded)
+  const handleFolderAssign = (folderId: string) => onAssignToFolder && onAssignToFolder(tab.id, folderId)
+  
+  const handleCreateFolderAndAssign = async () => {
+    if (newFolderName.trim() && onCreateFolderAndAssign) {
+      onCreateFolderAndAssign(tab.id, newFolderName.trim())
+      setNewFolderName('')
+      setIsCreatingFolder(false)
+    }
+  }
+
+  return (
+    <div className="relative group" ref={constraintsRef}>
+      <div className="absolute inset-0 flex">
+        <div 
+          className={`flex-1 bg-green-500 flex items-center justify-start pl-6 rounded-lg transition-opacity duration-200 ${
+            dragDirection === 'right' ? 'opacity-100' : 'opacity-0'
+          }`}
+        >
+          <Heart className="h-6 w-6 text-white" />
+          <span className="ml-2 text-white font-medium">Keep</span>
+        </div>
+        <div 
+          className={`flex-1 bg-red-500 flex items-center justify-end pr-6 rounded-lg transition-opacity duration-200 ${
+            dragDirection === 'left' ? 'opacity-100' : 'opacity-0'
+          }`}
+        >
+          <span className="mr-2 text-white font-medium">Discard</span>
+          <Trash2 className="h-6 w-6 text-white" />
+        </div>
       </div>
 
-      {/* Content - Simplified */}
-      <div className="p-3 flex-grow">
-        <div className="flex justify-between items-start">
-          <h3 className="text-base font-medium text-gray-900 dark:text-white line-clamp-1 mr-4 mb-1">
-            {tab.title || 'Untitled'}
-          </h3>
-          <button
-            onClick={onToggleExpand}
-            className="flex-shrink-0 text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-400"
-            aria-label={isExpanded ? "Show less" : "Show more"}
-          >
-            <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-              {isExpanded ? (
-                <path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" />
-              ) : (
-                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-              )}
-            </svg>
-          </button>
-        </div>
-
-        {/* Only show the summary (more concise) */}
-        {!isExpanded ? (
-          <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2 mb-2">
-            {tab.summary || 'No summary available.'}
-          </p>
-        ) : (
-          <div className="mt-2 space-y-3">
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-300">
-                {tab.summary || 'No summary available.'}
-              </p>
-            </div>
-            
-            <div className="pt-2">
-              <a 
-                href={tab.url} 
-                target="_blank" 
-                rel="noopener noreferrer" 
-                className="text-xs text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300 block truncate"
+      <motion.div
+        drag="x"
+        dragConstraints={constraintsRef}
+        dragElastic={0.2}
+        onDrag={handleSwipeDrag}
+        onDragEnd={handleSwipeDragEnd}
+        onDragStart={() => onDragStart?.(tab)}
+        onDragEnd={() => onDragEnd?.()}
+        animate={controls}
+        whileDrag={{ scale: 1.02 }}
+        className="relative z-10"
+        draggable={true}
+      >
+        <Card 
+          className={`transition-all duration-200 ${
+            isSelected ? 'ring-2 ring-primary' : ''
+          } ${isExpanded ? 'mb-2' : ''} cursor-pointer`}
+          onClick={handleCardTap}
+        >
+          <CardContent className="p-4">
+            <div className="flex items-start space-x-3 mb-3">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleToggleSelect()
+                }}
+                className={`touch-target-large rounded-full border-2 flex items-center justify-center transition-colors ${
+                  isSelected 
+                    ? 'bg-primary border-primary text-primary-foreground' 
+                    : 'border-muted-foreground/30 hover:border-primary'
+                }`}
+                style={{ minWidth: '24px', minHeight: '24px' }}
               >
-                {tab.url}
-              </a>
-            </div>
-            
-            {/* Tags */}
-            {tab.tags && tab.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {tab.tags.map(tag => (
-                  <span key={tag} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary-100 text-primary-800 dark:bg-primary-900 dark:text-primary-300">
-                    {tag}
-                  </span>
-                ))}
+                {isSelected && <Check className="h-4 w-4" />}
+              </button>
+
+              <div className="flex-1 min-w-0">
+                <h3 className="font-medium text-sm leading-5 line-clamp-2 text-foreground">
+                  <HighlightedText text={tab.title} searchTerm={searchTerm} />
+                </h3>
+                <p className="text-xs text-muted-foreground mt-1 truncate">
+                  <HighlightedText text={tab.domain || ''} searchTerm={searchTerm} />
+                </p>
               </div>
-            )}
-            
-            {/* Suggested folders - Simplified */}
-            {tab.suggestedFolders && tab.suggestedFolders.length > 0 && (
-              <div className="pt-1">
-                <p className="text-xs font-medium text-gray-700 dark:text-gray-400 mb-1">Suggested:</p>
-                <div className="flex flex-wrap gap-1">
-                  {tab.suggestedFolders.slice(0, 3).map(folderId => {
-                    const suggestedFolder = folders.find(f => f.id === folderId)
-                    if (!suggestedFolder) return null
-                    
-                    return (
-                      <button
-                        key={folderId}
-                        onClick={() => onAssignFolder(folderId)}
-                        className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                        style={{ 
-                          backgroundColor: suggestedFolder.color || '#4B5563',
-                          color: 'white' 
-                        }}
-                      >
-                        {suggestedFolder.name}
-                      </button>
-                    )
-                  })}
+
+              <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="touch-target shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem asChild>
+                      <a href={tab.url} target="_blank" rel="noopener noreferrer" className="flex items-center">
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        Open Tab
+                      </a>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleKeep() }}>
+                      <Heart className="h-4 w-4 mr-2" />
+                      Keep
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDiscard() }}>
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Discard
+                    </DropdownMenuItem>
+                    {onDelete && (
+                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDelete() }} className="text-destructive focus:text-destructive">
+                        <X className="h-4 w-4 mr-2" />
+                        Delete Permanently
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
+
+            {tab.screenshot && (
+              <div 
+                className="mb-3 rounded-lg overflow-hidden bg-muted cursor-pointer group relative"
+                onClick={(e) => { e.stopPropagation(); setIsPreviewOpen(true) }}
+              >
+                <img src={tab.screenshot} alt={tab.title} className="w-full h-32 object-cover transition-transform group-hover:scale-105" loading="lazy" />
+                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <div className="bg-white/90 dark:bg-gray-800/90 px-3 py-2 rounded-lg backdrop-blur-sm">
+                    <span className="text-gray-800 dark:text-gray-200 text-sm font-medium">Click to preview</span>
+                  </div>
                 </div>
               </div>
             )}
-          </div>
-        )}
-      </div>
 
-      {/* Action Buttons - More prominent */}
-      <div className="p-2 flex justify-between items-center border-t border-gray-200 dark:border-gray-700">
-        <button
-          onClick={onKeep}
-          className={`flex-1 px-4 py-2 rounded-md text-sm font-medium mr-2 transition-colors
-                    ${tab.status === 'kept' 
-                      ? 'bg-green-500 text-white hover:bg-green-600' 
-                      : 'bg-white text-gray-800 border border-gray-300 hover:bg-green-100 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-green-900/40 dark:border-gray-600'}`}
-        >
-          {tab.status === 'discarded' ? 'Restore' : 'Keep'}
-        </button>
-        
-        <button
-          onClick={onDiscard}
-          className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-colors
-                    ${tab.status === 'discarded' 
-                      ? 'bg-red-500 text-white hover:bg-red-600' 
-                      : 'bg-white text-gray-800 border border-gray-300 hover:bg-red-100 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-red-900/40 dark:border-gray-600'}`}
-        >
-          {tab.status === 'discarded' ? 'Delete' : 'Discard'}
-        </button>
-      </div>
+            {tab.summary && (
+              <div className={`text-sm text-muted-foreground leading-5 ${isExpanded ? '' : 'line-clamp-2'}`}>
+                {searchTerm ? (
+                  <SearchSnippet text={tab.summary} searchTerm={searchTerm} maxLength={isExpanded ? 500 : 150} className={`text-sm text-muted-foreground leading-5 ${isExpanded ? '' : 'line-clamp-2'}`} />
+                ) : (
+                  tab.summary
+                )}
+              </div>
+            )}
 
-      {/* Screenshot Preview Modal */}
+            {tab.tags && tab.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-3">
+                {tab.tags.slice(0, isExpanded ? undefined : 3).map((tag, index) => (
+                  <Badge key={index} variant="secondary" className="text-xs">{tag}</Badge>
+                ))}
+                {!isExpanded && tab.tags.length > 3 && (
+                  <span className="text-xs text-muted-foreground">+{tab.tags.length - 3} more</span>
+                )}
+              </div>
+            )}
+
+            {isExpanded && showActions && (
+              <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
+                <div className="flex space-x-2">
+                  <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); handleKeep() }} className="touch-target">
+                    <Heart className="h-4 w-4 mr-1" />
+                    Keep
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); handleDiscard() }} className="touch-target">
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Discard
+                  </Button>
+                </div>
+                
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" variant="ghost" onClick={(e) => e.stopPropagation()} className="touch-target">
+                      <Folder className="h-4 w-4 mr-1" />
+                      Assign to Folder
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {folders.length > 0 ? (
+                      folders.map(folder => (
+                        <DropdownMenuItem key={folder.id} onClick={(e) => { e.stopPropagation(); handleFolderAssign(folder.id) }}>
+                          <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: folder.color || '#4B5563' }} />
+                          {folder.name}
+                        </DropdownMenuItem>
+                      ))
+                    ) : (
+                      <DropdownMenuItem disabled>No folders available</DropdownMenuItem>
+                    )}
+                    {onCreateFolderAndAssign && (
+                      <>
+                        {folders.length > 0 && <DropdownMenuSeparator />}
+                        {!isCreatingFolder ? (
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setIsCreatingFolder(true) }}>
+                            <FolderPlus className="h-4 w-4 mr-2" />
+                            Create New Folder
+                          </DropdownMenuItem>
+                        ) : (
+                          <div className="p-2 space-y-2" onClick={(e) => e.stopPropagation()}>
+                            <input type="text" placeholder="Folder name" value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleCreateFolderAndAssign(); if (e.key === 'Escape') setIsCreatingFolder(false) }} className="w-full px-2 py-1 text-sm border rounded" autoFocus />
+                            <div className="flex gap-1">
+                              <button onClick={handleCreateFolderAndAssign} disabled={!newFolderName.trim()} className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded disabled:opacity-50">Create</button>
+                              <button onClick={() => setIsCreatingFolder(false)} className="px-2 py-1 text-xs border rounded">Cancel</button>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
+
       {tab.screenshot && (
-        <ScreenshotPreviewModal
-          isOpen={isPreviewOpen}
-          onClose={() => setIsPreviewOpen(false)}
-          screenshotUrl={tab.screenshot}
-          fullScreenshotUrl={tab.fullScreenshot}
-          title={tab.title || 'Untitled'}
-          url={tab.url}
-        />
+        <ScreenshotPreviewModal isOpen={isPreviewOpen} onClose={() => setIsPreviewOpen(false)} screenshotUrl={tab.screenshot} fullScreenshotUrl={tab.fullScreenshot} title={tab.title || 'Untitled'} url={tab.url} />
       )}
-    </motion.div>
+    </div>
   )
-})
+}
