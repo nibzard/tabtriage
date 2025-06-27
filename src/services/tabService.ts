@@ -1,6 +1,6 @@
 import { Tab } from '@/types/Tab'
 import { Folder } from '@/types/Folder'
-import { captureScreenshot } from '@/services/screenshotService'
+import { captureScreenshots } from '@/services/screenshotService'
 import { fetchPageContent } from './pageContentService'
 import { generateSummaryWithAI } from './openaiService'
 import { generateTabEmbedding } from './embeddingService'
@@ -264,9 +264,9 @@ export async function processTabsWithAI(tabs: Tab[]): Promise<Tab[]> {
     // Process batch in parallel
     const batchPromises = batch.map(async (tab) => {
       try {
-        // Step 1: Capture screenshot
-        logger.debug(`Capturing screenshot for ${tab.url}`)
-        const screenshotUrl = await captureScreenshot(tab.url)
+        // Step 1: Capture screenshots (thumbnail and full-height)
+        logger.debug(`Capturing screenshots for ${tab.url}`)
+        const { thumbnail: screenshotUrl, fullHeight: fullScreenshotUrl } = await captureScreenshots(tab.url)
 
         // Step 2: Fetch page content
         logger.debug(`Fetching content for ${tab.url}`)
@@ -279,10 +279,11 @@ export async function processTabsWithAI(tabs: Tab[]): Promise<Tab[]> {
         // Step 4: Generate folder suggestions based on category
         const suggestedFolders = generateFolderSuggestions(category, tags)
 
-        // Log the screenshot URL for debugging
+        // Log the screenshot URLs for debugging
         console.log(`Tab ${tab.id} processing complete:`, {
           url: tab.url,
           screenshotUrl,
+          fullScreenshotUrl,
           summary: summary.substring(0, 50) + '...',
           category,
           tags
@@ -292,6 +293,7 @@ export async function processTabsWithAI(tabs: Tab[]): Promise<Tab[]> {
         return {
           ...tab,
           screenshot: screenshotUrl || undefined,
+          fullScreenshot: fullScreenshotUrl || undefined,
           summary,
           category,
           tags,

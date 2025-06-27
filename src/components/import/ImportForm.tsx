@@ -151,7 +151,8 @@ export function ImportForm({ onImportStart, onUpdateProgress }: ImportFormProps)
             await new Promise(resolve => setTimeout(resolve, 100))
           } catch (batchError) {
             console.error(`Error processing batch at index ${i}:`, batchError)
-            throw new Error(`Error in batch ${Math.floor(i/BATCH_SIZE) + 1}: ${batchError.message || 'Unknown error'}`)
+            const errorMessage = batchError instanceof Error ? batchError.message : 'Unknown error'
+            throw new Error(`Error in batch ${Math.floor(i/BATCH_SIZE) + 1}: ${errorMessage}`)
           }
         }
       } catch (batchProcessError) {

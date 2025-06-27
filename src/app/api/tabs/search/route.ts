@@ -1,119 +1,83 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient, getServerUserId } from '@/utils/supabase-server';
+import { NextResponse } from 'next/server';
+import { db } from '@/db/client';
+import { tabs, tags, tabTags } from '@/db/schema';
+import { eq, and, inArray, desc } from 'drizzle-orm';
 import { logger } from '@/utils/logger';
-import { searchTabs } from '@/services/embeddingService';
+import { hybridSearch } from '@/services/jinaEmbeddingService';
+
+// Simple session management (replace with proper auth later)
+function getCurrentUserId(): string {
+  return 'user_001';
+}
 
 /**
- * GET /api/tabs/search - Search tabs using hybrid search
+ * GET /api/tabs/search - Search tabs using hybrid search (vector + text)
  */
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   try {
-    const searchParams = request.nextUrl.searchParams;
-    const query = searchParams.get('q');
-    const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit') as string, 10) : 20;
-    const fullTextWeight = searchParams.get('fullTextWeight') ? parseFloat(searchParams.get('fullTextWeight') as string) : 1.0;
-    const semanticWeight = searchParams.get('semanticWeight') ? parseFloat(searchParams.get('semanticWeight') as string) : 1.0;
+    const userId = getCurrentUserId();
+    const url = new URL(request.url);
+    const query = url.searchParams.get('q') || '';
+    const limit = parseInt(url.searchParams.get('limit') || '20');
+    const vectorWeight = parseFloat(url.searchParams.get('vectorWeight') || '0.7');
+    const textWeight = parseFloat(url.searchParams.get('textWeight') || '0.3');
     
-    if (!query) {
-      return NextResponse.json({ error: 'Search query is required' }, { status: 400 });
-    }
-    
-    const supabase = createServerSupabaseClient();
-    const userId = await getServerUserId();
-    
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!query.trim()) {
+      return NextResponse.json([]);
     }
     
     logger.info(`Searching tabs for "${query}" with userId: ${userId}`);
     
-    try {
-      const results = await searchTabs(query, userId, {
-        limit,
-        fullTextWeight,
-        semanticWeight
-      });
-      
-      // Determine if this was a hybrid or keyword search
-      // Check if embeddings are enabled in the database
-      const { error: vectorExtError } = await supabase.rpc('check_vector_extension');
-      const hasVectorExtension = !vectorExtError;
-      
-      // Set the search mode header
-      const response = NextResponse.json({
-        results,
-        searchMode: hasVectorExtension ? 'hybrid' : 'keyword',
-        count: results.length
-      });
-      
-      response.headers.set('X-Search-Mode', hasVectorExtension ? 'hybrid' : 'keyword');
-      return response;
-    } catch (searchError) {
-      logger.error('Error in searchTabs:', searchError);
-      
-      // Fall back to basic text search
-      const { data, error } = await supabase
-        .from('tabs')
-        .select('*')
-        .eq('user_id', userId)
-        .neq('status', 'discarded')
-        .textSearch(
-          'title, summary, category',
-          query,
-          { config: 'english' }
-        )
-        .limit(limit);
-      
-      if (error) {
-        logger.error('Error performing fallback text search:', error);
-        return NextResponse.json({ error: 'Search failed' }, { status: 500 });
-      }
-      
-      const response = NextResponse.json({
-        results: data,
-        searchMode: 'keyword',
-        count: data.length
-      });
-      
-      response.headers.set('X-Search-Mode', 'keyword');
-      return response;
-    }
-  } catch (error) {
-    logger.error('Error in search tabs route:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-  }
-}
-
-/**
- * POST /api/tabs/search - Search tabs with more complex criteria
- */
-export async function POST(request: Request) {
-  try {
-    const supabase = createServerSupabaseClient();
-    const userId = await getServerUserId();
-    
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    
-    const requestData = await request.json();
-    const { query, options = {} } = requestData;
-    
-    if (!query) {
-      return NextResponse.json({ error: 'Search query is required' }, { status: 400 });
-    }
-    
-    logger.info(`Advanced search for "${query}" with options:`, options);
-    
-    const results = await searchTabs(query, userId, {
-      limit: options.limit || 20,
-      fullTextWeight: options.fullTextWeight || 1.0,
-      semanticWeight: options.semanticWeight || 1.0
+    // Use hybrid search combining vector and text search
+    const searchResults = await hybridSearch(query, userId, {
+      limit,
+      vectorWeight,
+      textWeight
     });
     
-    return NextResponse.json(results);
+    // Get tags for the results
+    if (searchResults.length > 0) {
+      const tabIds = searchResults.map(tab => tab.id);
+      
+      const tabTagsData = await db
+        .select({
+          tabId: tabTags.tabId,
+          tagName: tags.name
+        })
+        .from(tabTags)
+        .innerJoin(tags, eq(tabTags.tagId, tags.id))
+        .where(inArray(tabTags.tabId, tabIds));
+      
+      // Transform to match frontend interface
+      const transformedResults = searchResults.map(tab => {
+        const tabTagsList = tabTagsData
+          .filter(tt => tt.tabId === tab.id)
+          .map(tt => tt.tagName);
+        
+        return {
+          id: tab.id,
+          title: tab.title,
+          url: tab.url,
+          domain: tab.domain || '',
+          dateAdded: tab.date_added || tab.dateAdded || new Date().toISOString(),
+          summary: tab.summary || '',
+          category: tab.category || 'uncategorized',
+          screenshot: tab.screenshot_url || tab.screenshotUrl,
+          status: tab.status || 'unprocessed',
+          tags: tabTagsList,
+          folderId: tab.folder_id || tab.folderId,
+          suggestedFolders: [],
+          score: tab.score // Include relevance score
+        };
+      });
+      
+      logger.info(`Found ${transformedResults.length} search results`);
+      return NextResponse.json(transformedResults);
+    }
+    
+    return NextResponse.json([]);
   } catch (error) {
-    logger.error('Error in POST search tabs route:', error);
+    logger.error('Error in tabs search:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

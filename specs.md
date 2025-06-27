@@ -21,17 +21,18 @@ The system consists of three primary components:
 ### Backend:
 - **Architecture**: Serverless functions (Rationale: Cost-effective, scalable for variable usage patterns)
 - **Provider**: Vercel or Netlify (Rationale: Tight integration with Next.js, simplified deployment)
-- **Database**: Supabase (Rationale: Open-source Firebase alternative with PostgreSQL backing)
-- **Authentication**: Auth0 or Clerk (Rationale: Quick implementation of secure authentication)
+- **Database**: Turso (Rationale: SQLite-based edge database with global replication, simpler than PostgreSQL, excellent longevity)
+- **ORM**: Drizzle ORM (Rationale: Type-safe database queries, lightweight, great developer experience)
+- **Authentication**: Simple session-based auth (Rationale: MVP simplicity, NextAuth.js planned for future)
 
 ### AI Integration:
 - **Core Engine**: OpenAI GPT-4o API (Rationale: Best-in-class capabilities for content understanding)
 - **Processing**: Server-side batch processing to minimize token usage
-- **Embedding**: OpenAI text embeddings for content similarity and clustering
+- **Search**: SQLite FTS5 full-text search (Rationale: Built-in, fast, no external dependencies)
 
 ### Storage:
-- **User Data**: PostgreSQL via Supabase (structured data, metadata, embeddings)
-- **Images**: Content Delivery Network for screenshot storage
+- **User Data**: SQLite via Turso (structured data, metadata, with edge replication for performance)
+- **Images**: Local file storage initially (Rationale: MVP simplicity, migration to Uploadthing/R2 planned)
 - **Local Caching**: IndexedDB for offline functionality
 
 ## FUNCTIONAL REQUIREMENTS:

@@ -1,109 +1,83 @@
 import { NextResponse } from 'next/server';
-import { createServerSupabaseClient, getServerUserId } from '@/utils/supabase-server';
+import { db, generateId } from '@/db/client';
+import { tabs, folders, tags, tabTags, suggestedFolders } from '@/db/schema';
+import { eq, and, desc, inArray } from 'drizzle-orm';
 import { logger } from '@/utils/logger';
-import { Tab } from '@/types/Tab';
+import { updateTabEmbedding } from '@/services/jinaEmbeddingService';
+import { ensureUserExists } from '@/utils/ensure-user';
+import { captureScreenshots } from '@/services/screenshotService';
+
+// Simple session management (replace with proper auth later)
+async function getCurrentUserId(): Promise<string> {
+  const userId = 'user_001';
+  await ensureUserExists(userId);
+  return userId;
+}
 
 /**
  * GET /api/tabs - Get all tabs for the current user
  */
 export async function GET() {
   try {
-    const supabase = createServerSupabaseClient();
-    const userId = await getServerUserId();
+    const userId = await getCurrentUserId();
     
-    if (!userId) {
-      logger.warn('No user ID found for GET tabs request, falling back to local storage');
-      // Return empty array instead of error to allow client-side fallback
+    // Get all tabs for the user
+    const userTabs = await db
+      .select()
+      .from(tabs)
+      .where(eq(tabs.userId, userId))
+      .orderBy(desc(tabs.dateAdded));
+    
+    if (userTabs.length === 0) {
       return NextResponse.json([]);
     }
     
-    const { data: tabRecords, error } = await supabase
-      .from('tabs')
-      .select('*')
-      .eq('user_id', userId)
-      .order('date_added', { ascending: false });
+    const tabIds = userTabs.map(tab => tab.id);
     
-    if (error) {
-      logger.error('Error getting tabs:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-    
-    // Get tab tags
-    const { data: tabTagRecords, error: tabTagError } = await supabase
-      .from('tab_tags')
-      .select('tab_id, tags(name)')
-      .in('tab_id', tabRecords.map(tab => tab.id));
-    
-    if (tabTagError) {
-      logger.error('Error getting tab tags:', tabTagError);
-    }
+    // Get all tab tags
+    const tabTagsData = await db
+      .select({
+        tabId: tabTags.tabId,
+        tagName: tags.name
+      })
+      .from(tabTags)
+      .innerJoin(tags, eq(tabTags.tagId, tags.id))
+      .where(inArray(tabTags.tabId, tabIds));
     
     // Get suggested folders
-    const { data: suggestedFolderRecords, error: suggestedFolderError } = await supabase
-      .from('suggested_folders')
-      .select('tab_id, folder_id')
-      .in('tab_id', tabRecords.map(tab => tab.id));
+    const suggestedFoldersData = await db
+      .select()
+      .from(suggestedFolders)
+      .where(inArray(suggestedFolders.tabId, tabIds));
     
-    if (suggestedFolderError) {
-      logger.error('Error getting suggested folders:', suggestedFolderError);
-    }
-    
-    // Convert to Tab objects
-    const tabs = tabRecords.map(tabRecord => {
-      // Get tags for this tab in a type-safe way
-      const tabTags: string[] = [];
+    // Transform to match frontend Tab interface
+    const transformedTabs = userTabs.map(tab => {
+      const tabTagsList = tabTagsData
+        .filter(tt => tt.tabId === tab.id)
+        .map(tt => tt.tagName);
       
-      // Process tags with a simple approach ignoring the complex structure
-      if (tabTagRecords && Array.isArray(tabTagRecords)) {
-        const relevantTags = tabTagRecords.filter(tt => tt.tab_id === tabRecord.id);
-        
-        for (const tagRecord of relevantTags) {
-          try {
-            // Access as any to bypass TypeScript checking
-            const tagsObj = tagRecord.tags as any;
-            
-            if (tagsObj) {
-              // If it's a direct object with name property
-              if (typeof tagsObj === 'object' && tagsObj.name) {
-                tabTags.push(String(tagsObj.name));
-              }
-              // If it's an array of objects with name property
-              else if (Array.isArray(tagsObj)) {
-                for (const tag of tagsObj) {
-                  if (tag && tag.name) {
-                    tabTags.push(String(tag.name));
-                  }
-                }
-              }
-            }
-          } catch (e) {
-            console.error('Error processing tag record:', e);
-          }
-        }
-      }
-      
-      // Get suggested folders for this tab
-      const suggestedFolders = suggestedFolderRecords
-        ?.filter(sf => sf.tab_id === tabRecord.id)
-        .map(sf => sf.folder_id) || [];
+      const suggestedFoldersList = suggestedFoldersData
+        .filter(sf => sf.tabId === tab.id)
+        .map(sf => sf.folderId);
       
       return {
-        id: tabRecord.id,
-        title: tabRecord.title,
-        url: tabRecord.url,
-        domain: tabRecord.domain,
-        dateAdded: tabRecord.date_added,
-        summary: tabRecord.summary || '',
-        category: tabRecord.category || 'uncategorized',
-        screenshot: tabRecord.screenshot_url,
-        status: tabRecord.status,
-        tags: tabTags,
-        folderId: tabRecord.folder_id,
-        suggestedFolders: suggestedFolders
-      } as Tab;
+        id: tab.id,
+        title: tab.title,
+        url: tab.url,
+        domain: tab.domain || '',
+        dateAdded: tab.dateAdded || new Date().toISOString(),
+        summary: tab.summary || '',
+        category: tab.category || 'uncategorized',
+        screenshot: tab.screenshotUrl,
+        fullScreenshot: tab.fullScreenshotUrl,
+        status: tab.status || 'unprocessed',
+        tags: tabTagsList,
+        folderId: tab.folderId,
+        suggestedFolders: suggestedFoldersList
+      };
     });
     
-    return NextResponse.json(tabs);
+    return NextResponse.json(transformedTabs);
   } catch (error) {
     logger.error('Error in GET tabs route:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -115,119 +89,140 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   try {
-    const supabase = createServerSupabaseClient();
-    const userId = await getServerUserId();
+    const userId = await getCurrentUserId();
+    const tabData = await request.json();
     
-    if (!userId) {
-      logger.warn('No user ID found for POST tabs request, using anonymous user');
-      // Create a temporary ID for this request
-      const tempUserId = `anon-${Date.now()}`;
-      return NextResponse.json({ 
-        success: false, 
-        error: 'No authenticated user',
-        message: 'Your data was saved locally but not to the server. Refresh may lose data.'
-      });
-    }
+    // Ensure tab has an ID
+    const tabId = tabData.id || generateId();
     
-    const tab = await request.json() as Tab;
-    
-    // Convert to database record
+    // Convert from frontend Tab interface to database record
     const tabRecord = {
-      id: tab.id,
-      user_id: userId,
-      folder_id: tab.folderId,
-      title: tab.title.substring(0, 255),
-      url: tab.url.substring(0, 2048),
-      domain: tab.domain || '',
-      date_added: tab.dateAdded,
-      summary: tab.summary || '',
-      category: tab.category || 'uncategorized',
-      screenshot_url: tab.screenshot || null,
-      status: tab.status
+      id: tabId,
+      userId: userId,
+      folderId: tabData.folderId || null,
+      title: tabData.title.substring(0, 255),
+      url: tabData.url.substring(0, 2048),
+      domain: tabData.domain || '',
+      dateAdded: tabData.dateAdded || new Date().toISOString(),
+      summary: tabData.summary || '',
+      category: tabData.category || 'uncategorized',
+      screenshotUrl: tabData.screenshot || null,
+      fullScreenshotUrl: tabData.fullScreenshot || null,
+      status: tabData.status || 'unprocessed',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
     
     // Insert or update the tab
-    const { data, error } = await supabase
-      .from('tabs')
-      .upsert(tabRecord)
-      .select();
-    
-    if (error) {
-      logger.error('Error saving tab:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    await db
+      .insert(tabs)
+      .values(tabRecord)
+      .onConflictDoUpdate({
+        target: tabs.id,
+        set: {
+          folderId: tabRecord.folderId,
+          title: tabRecord.title,
+          url: tabRecord.url,
+          domain: tabRecord.domain,
+          summary: tabRecord.summary,
+          category: tabRecord.category,
+          screenshotUrl: tabRecord.screenshotUrl,
+          fullScreenshotUrl: tabRecord.fullScreenshotUrl,
+          status: tabRecord.status,
+          updatedAt: new Date().toISOString()
+        }
+      });
+
+    // Generate embedding in background (don't wait for it)
+    if (tabRecord.title || tabRecord.summary) {
+      const embeddingText = `${tabRecord.title} ${tabRecord.summary || ''}`.trim();
+      updateTabEmbedding(tabId, embeddingText, 'retrieval.passage').catch(error => {
+        logger.warn(`Failed to generate Jina embedding for tab ${tabId}:`, error);
+      });
+    }
+
+    // Generate screenshots in background if not already provided
+    if (!tabRecord.screenshotUrl && tabRecord.url) {
+      captureScreenshots(tabRecord.url).then(async ({ thumbnail, fullHeight }) => {
+        if (thumbnail || fullHeight) {
+          // Update the tab record with the screenshot URLs
+          await db
+            .update(tabs)
+            .set({ 
+              screenshotUrl: thumbnail,
+              fullScreenshotUrl: fullHeight,
+              updatedAt: new Date().toISOString()
+            })
+            .where(eq(tabs.id, tabId));
+          
+          logger.info(`Screenshots generated and saved for tab ${tabId}: thumbnail=${thumbnail}, full=${fullHeight}`);
+        }
+      }).catch(error => {
+        logger.warn(`Failed to generate screenshots for tab ${tabId}:`, error);
+      });
     }
     
-    // Save tags if present
-    if (tab.tags && tab.tags.length > 0) {
-      try {
-        // First, ensure all tags exist
-        for (const tagName of tab.tags) {
-          // Check if tag exists
-          const { data: existingTags } = await supabase
-            .from('tags')
-            .select('id')
-            .eq('user_id', userId)
-            .eq('name', tagName)
-            .limit(1);
-          
-          if (!existingTags || existingTags.length === 0) {
-            // Create new tag
-            await supabase
-              .from('tags')
-              .insert({ user_id: userId, name: tagName });
-          }
-        }
-        
-        // Get all tags
-        const { data: tagData } = await supabase
-          .from('tags')
-          .select('id, name')
-          .eq('user_id', userId)
-          .in('name', tab.tags);
-        
-        // Delete existing tab_tags
-        await supabase
-          .from('tab_tags')
-          .delete()
-          .eq('tab_id', tab.id);
-        
-        // Insert new tab_tags
-        if (tagData && tagData.length > 0) {
-          const tabTags = tagData.map(tag => ({ tab_id: tab.id, tag_id: tag.id }));
-          
-          await supabase
-            .from('tab_tags')
-            .insert(tabTags);
-        }
-      } catch (tagError) {
-        logger.error('Error saving tab tags:', tagError);
+    // Handle tags if present
+    if (tabData.tags && tabData.tags.length > 0) {
+      // First, ensure all tags exist
+      for (const tagName of tabData.tags) {
+        await db
+          .insert(tags)
+          .values({
+            id: generateId(),
+            userId: userId,
+            name: tagName,
+            createdAt: new Date().toISOString()
+          })
+          .onConflictDoNothing();
       }
-    }
-    
-    // Save suggested folders if present
-    if (tab.suggestedFolders && tab.suggestedFolders.length > 0) {
-      try {
-        // Delete existing suggested_folders
-        await supabase
-          .from('suggested_folders')
-          .delete()
-          .eq('tab_id', tab.id);
-        
-        // Insert new suggested_folders
-        const suggestedFolders = tab.suggestedFolders.map(folderId => ({
-          tab_id: tab.id,
-          folder_id: folderId
+      
+      // Get tag IDs
+      const tagRecords = await db
+        .select()
+        .from(tags)
+        .where(and(
+          eq(tags.userId, userId),
+          inArray(tags.name, tabData.tags)
+        ));
+      
+      // Delete existing tab_tags
+      await db
+        .delete(tabTags)
+        .where(eq(tabTags.tabId, tabId));
+      
+      // Insert new tab_tags
+      if (tagRecords.length > 0) {
+        const tabTagRecords = tagRecords.map(tag => ({
+          tabId: tabId,
+          tagId: tag.id
         }));
         
-        await supabase
-          .from('suggested_folders')
-          .insert(suggestedFolders);
-      } catch (folderError) {
-        logger.error('Error saving suggested folders:', folderError);
+        await db
+          .insert(tabTags)
+          .values(tabTagRecords);
       }
     }
     
-    return NextResponse.json({ success: true, id: tab.id });
+    // Handle suggested folders if present
+    if (tabData.suggestedFolders && tabData.suggestedFolders.length > 0) {
+      // Delete existing suggested folders
+      await db
+        .delete(suggestedFolders)
+        .where(eq(suggestedFolders.tabId, tabId));
+      
+      // Insert new suggested folders
+      const suggestedFolderRecords = tabData.suggestedFolders.map((folderId: string) => ({
+        tabId: tabId,
+        folderId: folderId
+      }));
+      
+      await db
+        .insert(suggestedFolders)
+        .values(suggestedFolderRecords);
+    }
+    
+    return NextResponse.json({ success: true, id: tabId });
   } catch (error) {
     logger.error('Error in POST tabs route:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -235,22 +230,11 @@ export async function POST(request: Request) {
 }
 
 /**
- * DELETE /api/tabs/:id - Delete a tab
+ * DELETE /api/tabs - Delete a tab
  */
 export async function DELETE(request: Request) {
   try {
-    const supabase = createServerSupabaseClient();
-    const userId = await getServerUserId();
-    
-    if (!userId) {
-      logger.warn('No user ID found for DELETE tabs request');
-      return NextResponse.json({ 
-        success: false,
-        error: 'No authenticated user',
-        message: 'Unable to delete from server. Data may only be removed locally.'
-      });
-    }
-    
+    const userId = getCurrentUserId();
     const url = new URL(request.url);
     const tabId = url.searchParams.get('id');
     
@@ -258,54 +242,17 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Tab ID required' }, { status: 400 });
     }
     
-    // Get the tab to check for screenshot
-    const { data: tab, error: getError } = await supabase
-      .from('tabs')
-      .select('screenshot_url')
-      .eq('id', tabId)
-      .eq('user_id', userId) // Ensure the tab belongs to the user
-      .single();
+    // Delete related records first (foreign key constraints)
+    await db.delete(tabTags).where(eq(tabTags.tabId, tabId));
+    await db.delete(suggestedFolders).where(eq(suggestedFolders.tabId, tabId));
     
-    if (getError && getError.code !== 'PGRST116') { // PGRST116 is not found
-      logger.error('Error getting tab for deletion:', getError);
-      return NextResponse.json({ error: getError.message }, { status: 500 });
-    }
-    
-    if (tab?.screenshot_url) {
-      // Extract filename from URL
-      const url = new URL(tab.screenshot_url);
-      const pathname = url.pathname;
-      const filename = pathname.substring(pathname.lastIndexOf('/') + 1);
-      
-      // Delete the screenshot
-      await supabase.storage
-        .from('tab-screenshots')
-        .remove([`screenshots/${filename}`]);
-    }
-    
-    // Delete tab tags
-    await supabase
-      .from('tab_tags')
-      .delete()
-      .eq('tab_id', tabId);
-    
-    // Delete suggested folders
-    await supabase
-      .from('suggested_folders')
-      .delete()
-      .eq('tab_id', tabId);
-    
-    // Delete the tab
-    const { error } = await supabase
-      .from('tabs')
-      .delete()
-      .eq('id', tabId)
-      .eq('user_id', userId); // Ensure the tab belongs to the user
-    
-    if (error) {
-      logger.error('Error deleting tab:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    // Delete the tab (ensure it belongs to the user)
+    await db
+      .delete(tabs)
+      .where(and(
+        eq(tabs.id, tabId),
+        eq(tabs.userId, userId)
+      ));
     
     return NextResponse.json({ success: true });
   } catch (error) {

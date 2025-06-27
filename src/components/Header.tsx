@@ -30,11 +30,8 @@ export function Header() {
               <Link href="/import" className="px-4 py-2 rounded-full text-gray-700 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400">
                 1. Import
               </Link>
-              <Link href="/gallery" className="px-4 py-2 rounded-full text-gray-700 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400">
-                2. Triage
-              </Link>
-              <Link href="/folders" className="px-4 py-2 rounded-full text-gray-700 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400">
-                3. Organize
+              <Link href="/workspace" className="px-4 py-2 rounded-full text-gray-700 hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400">
+                2. Workspace
               </Link>
             </div>
 
@@ -112,18 +109,11 @@ export function Header() {
                 1. Import
               </Link>
               <Link
-                href="/gallery"
+                href="/workspace"
                 className="px-4 py-3 rounded-md text-gray-700 hover:bg-white dark:text-gray-300 dark:hover:bg-gray-700"
                 onClick={() => setIsMenuOpen(false)}
               >
-                2. Triage
-              </Link>
-              <Link
-                href="/folders"
-                className="px-4 py-3 rounded-md text-gray-700 hover:bg-white dark:text-gray-300 dark:hover:bg-gray-700"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                3. Organize
+                2. Workspace
               </Link>
             </div>
           </motion.div>

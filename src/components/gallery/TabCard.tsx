@@ -1,15 +1,18 @@
 'use client'
 
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import Image from 'next/image'
 import { motion } from 'framer-motion'
 import { Tab } from '@/types/Tab'
-import { useFoldersContext } from '@/context/FoldersContext'
+import { useFoldersContextSafe } from '@/context/FoldersContext'
+import { ScreenshotPreviewModal } from '@/components/ui/screenshot-preview-modal'
 
 interface TabCardProps {
   tab: Tab
   isExpanded: boolean
+  isSelected?: boolean
   onToggleExpand: () => void
+  onToggleSelect?: () => void
   onKeep: () => void
   onDiscard: () => void
   onAssignFolder: (folderId: string) => void
@@ -18,12 +21,15 @@ interface TabCardProps {
 export const TabCard = memo(function TabCard({
   tab,
   isExpanded,
+  isSelected = false,
   onToggleExpand,
+  onToggleSelect,
   onKeep,
   onDiscard,
   onAssignFolder,
 }: TabCardProps) {
-  const { folders } = useFoldersContext()
+  const { folders } = useFoldersContextSafe()
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false)
   
   // Get folder name if tab is assigned to a folder
   const folder = tab.folderId ? folders.find(f => f.id === tab.folderId) : null
@@ -34,20 +40,24 @@ export const TabCard = memo(function TabCard({
       initial={{ scale: 0.98, opacity: 0.8 }}
       animate={{ scale: 1, opacity: 1 }}
       whileHover={{ y: -2, transition: { duration: 0.2 } }}
-      className={`bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden flex flex-col h-full transform transition-transform 
+      className={`bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden flex flex-col h-full transform transition-transform relative
                  ${tab.status === 'discarded' ? 'border-l-4 border-l-red-500' : 
-                   tab.status === 'kept' ? 'border-l-4 border-l-green-500' : ''}`}
+                   tab.status === 'kept' ? 'border-l-4 border-l-green-500' : ''}
+                 ${isSelected ? 'ring-2 ring-primary bg-primary/5' : ''}`}
     >
       {/* Screenshot/Header - Larger and more prominent */}
       <div className="relative">
         {tab.screenshot ? (
-          <div className="relative h-40 overflow-hidden">
+          <div 
+            className="relative h-40 overflow-hidden cursor-pointer group"
+            onClick={() => setIsPreviewOpen(true)}
+          >
             {tab.screenshot.startsWith('data:') ? (
               // Handle data URLs directly with an img tag
               <img 
                 src={tab.screenshot} 
                 alt={tab.title}
-                className="object-cover w-full h-full"
+                className="object-cover w-full h-full transition-transform group-hover:scale-105"
                 onError={() => {
                   console.error(`Failed to load data URL image`)
                 }}
@@ -59,7 +69,7 @@ export const TabCard = memo(function TabCard({
                 alt={tab.title}
                 width={400}
                 height={225}
-                className="object-cover w-full h-full"
+                className="object-cover w-full h-full transition-transform group-hover:scale-105"
                 priority={false}
                 loading="lazy"
                 onError={() => {
@@ -67,9 +77,11 @@ export const TabCard = memo(function TabCard({
                 }}
               />
             )}
-            {/* Fallback in case of load error */}
-            <div className="absolute inset-0 bg-gray-100 dark:bg-gray-700 flex items-center justify-center opacity-0 hover:opacity-100">
-              <span className="text-gray-600 dark:text-gray-300 text-sm">{tab.domain || 'No domain'}</span>
+            {/* Preview overlay */}
+            <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+              <div className="bg-white/90 dark:bg-gray-800/90 px-3 py-2 rounded-lg backdrop-blur-sm">
+                <span className="text-gray-800 dark:text-gray-200 text-sm font-medium">Click to preview</span>
+              </div>
             </div>
           </div>
         ) : (
@@ -85,6 +97,23 @@ export const TabCard = memo(function TabCard({
           </div>
         )}
         
+        {/* Selection checkbox */}
+        {onToggleSelect && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleSelect()
+            }}
+            className="absolute top-2 left-2 z-20 w-6 h-6 rounded-full border-2 border-white bg-white/80 backdrop-blur-sm flex items-center justify-center hover:bg-white transition-colors"
+          >
+            {isSelected && (
+              <svg className="w-4 h-4 text-primary-600" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+            )}
+          </button>
+        )}
+
         {/* Status badge */}
         {tab.status !== 'unprocessed' && (
           <div className={`absolute top-2 right-2 px-2 py-1 rounded-full text-xs font-medium text-white ${tab.status === 'kept' ? 'bg-green-500' : 'bg-red-500'}`}>
@@ -218,6 +247,18 @@ export const TabCard = memo(function TabCard({
           {tab.status === 'discarded' ? 'Delete' : 'Discard'}
         </button>
       </div>
+
+      {/* Screenshot Preview Modal */}
+      {tab.screenshot && (
+        <ScreenshotPreviewModal
+          isOpen={isPreviewOpen}
+          onClose={() => setIsPreviewOpen(false)}
+          screenshotUrl={tab.screenshot}
+          fullScreenshotUrl={tab.fullScreenshot}
+          title={tab.title || 'Untitled'}
+          url={tab.url}
+        />
+      )}
     </motion.div>
   )
 })

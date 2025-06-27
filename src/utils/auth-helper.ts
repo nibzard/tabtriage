@@ -1,4 +1,3 @@
-import { supabase } from './supabase';
 import { logger } from './logger';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -7,43 +6,32 @@ import { v4 as uuidv4 } from 'uuid';
  */
 export async function getCurrentUserId(): Promise<string> {
   try {
-    // Try to get the current session
-    const { data: { session }, error } = await supabase.auth.getSession();
-    
-    // If there's a valid session, return the user ID
-    if (session?.user?.id) {
-      logger.debug('Found existing user session');
-      return session.user.id;
+    // Check for stored user ID first
+    if (typeof window !== 'undefined') {
+      const storedId = localStorage.getItem('currentUserId');
+      if (storedId) {
+        logger.debug('Using stored user ID:', storedId);
+        return storedId;
+      }
     }
     
-    // No session, so create an anonymous session
-    logger.info('No session found, creating anonymous session');
-    
-    // Generate a random email and password for the anonymous user
-    const anonymousEmail = `anonymous-${uuidv4()}@example.com`;
-    const anonymousPassword = uuidv4();
-    
-    // Sign up the anonymous user
-    const { data: { user }, error: signUpError } = await supabase.auth.signUp({
-      email: anonymousEmail,
-      password: anonymousPassword,
-    });
-    
-    if (signUpError) {
-      logger.error('Error creating anonymous session:', signUpError);
-      throw signUpError;
+    // Generate a new anonymous user ID
+    const fallbackId = uuidv4();
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('currentUserId', fallbackId);
     }
-    
-    if (!user?.id) {
-      logger.error('Failed to create anonymous user');
-      throw new Error('Failed to create anonymous user');
-    }
-    
-    logger.info('Created anonymous session');
-    return user.id;
+    logger.debug('Created new anonymous user ID:', fallbackId);
+    return fallbackId;
   } catch (error) {
     logger.error('Error in getCurrentUserId:', error);
-    throw error;
+    
+    // Last resort fallback - generate a valid UUID
+    const fallbackId = uuidv4();
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('currentUserId', fallbackId);
+    }
+    logger.warn('Using fallback UUID due to error:', fallbackId);
+    return fallbackId;
   }
 }
 
@@ -61,44 +49,23 @@ export async function ensureSession(): Promise<void> {
 }
 
 /**
- * Sign in with magic link
+ * Sign in with magic link - TODO: Implement with chosen auth system
  */
 export async function signInWithMagicLink(email: string): Promise<{ error?: Error }> {
-  try {
-    logger.debug(`Sending magic link to: ${email}`);
-    
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}/auth/callback`,
-      },
-    });
-    
-    if (error) {
-      logger.error('Error sending magic link:', error);
-      return { error };
-    }
-    
-    logger.debug('Magic link sent successfully');
-    return {};
-  } catch (error) {
-    logger.error('Exception in signInWithMagicLink:', error);
-    return { error: error as Error };
-  }
+  logger.warn('signInWithMagicLink not implemented - auth system migration needed');
+  return { error: new Error('Auth system not implemented') };
 }
 
 /**
- * Sign out the current user
+ * Sign out the current user - TODO: Implement with chosen auth system
  */
 export async function signOut(): Promise<{ error?: Error }> {
   try {
     logger.debug('Signing out user');
     
-    const { error } = await supabase.auth.signOut();
-    
-    if (error) {
-      logger.error('Error signing out:', error);
-      return { error };
+    // Clear local storage
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('currentUserId');
     }
     
     logger.debug('User signed out successfully');

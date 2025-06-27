@@ -1,10 +1,10 @@
 # CLAUDE.md - Guidelines for Zencoder
 
 ## Build Commands
-- `yarn dev` / `npm run dev` - Start development server
-- `yarn build` / `npm run build` - Create production build
-- `yarn start` / `npm run start` - Run production build
-- `yarn lint` / `npm run lint` - Run ESLint
+- `pnpm dev` - Start development server
+- `pnpm build` - Create production build
+- `pnpm start` - Run production build
+- `pnpm lint` - Run ESLint
 
 ## Code Style
 - **TypeScript**: Use strict typing with interfaces in `/src/types`
@@ -18,6 +18,7 @@
 - **State Management**: React Query + Context API for shared state
 - **Environment Variables**: Validate in code, store in `.env.local`
 - **Testing**: No test framework currently defined
+- **Package Manager**: Always use pnpm, never npm or yarn
 
 ## Architecture
 - Next.js with App Router pattern

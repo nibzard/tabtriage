@@ -10,10 +10,12 @@ TabTriage is a mobile-first web application designed to help users manage and or
 - Process imported URLs to capture screenshots and content
 
 ### AI-Powered Organization
+- **Jina Embeddings v3**: State-of-the-art multilingual semantic embeddings with task-specific LoRA adapters
+- **Hybrid Search**: Combines vector similarity search with traditional text search (SQLite FTS5)
 - Automatically generate concise descriptions (30-50 words) for each page
 - Automatically categorize content into suggested folders
 - Generate relevant tags based on content analysis
-- Identify potential duplicates or similar content
+- Identify potential duplicates or similar content using semantic similarity
 - Fetch and analyze page content for better summaries
 
 ### Visual Triage Interface
@@ -24,11 +26,14 @@ TabTriage is a mobile-first web application designed to help users manage and or
 - Support both mobile and desktop viewing with optimized layouts
 - Bulk actions for selecting multiple tabs (keep, discard, assign to folder)
 
-### Basic Organization
+### Advanced Organization & Search
+- **Semantic Search**: Find tabs by meaning, not just keywords (powered by Jina v3)
+- **Vector Similarity**: Discover related content across your entire collection
+- **Hybrid Ranking**: Configurable weights between semantic and keyword relevance
 - Allow creation and management of folders
-- Support basic tagging system (both AI and manual)
-- Provide simple filtering options (by date, domain, AI categories)
-- Enable search functionality across all saved tabs
+- Support advanced tagging system (both AI and manual)
+- Provide comprehensive filtering options (by date, domain, AI categories, similarity)
+- Real-time search with instant results and relevance scoring
 
 ## Technology Stack
 
@@ -42,17 +47,21 @@ TabTriage is a mobile-first web application designed to help users manage and or
 ### Backend
 - **Architecture**: Serverless functions
 - **Provider**: Vercel or Netlify
-- **Database**: Supabase (PostgreSQL)
-- **Authentication**: Auth0 or Clerk
+- **Database**: Turso (SQLite-based edge database)
+- **ORM**: Drizzle ORM for type-safe database queries
+- **Authentication**: Simple session-based (NextAuth.js planned)
 
 ### AI Integration
-- **Core Engine**: OpenAI GPT-4o API
-- **Processing**: Server-side batch processing
-- **Embedding**: OpenAI text embeddings for content similarity and clustering
+- **Embeddings**: Jina Embeddings v3 with 1024-dimensional vectors and task-specific LoRA adapters
+- **Core Engine**: OpenAI GPT-4o API for content analysis
+- **Vector Search**: Turso native F32_BLOB vectors with DiskANN algorithm
+- **Text Search**: SQLite FTS5 with BM25 scoring for keyword matching
+- **Hybrid Search**: Combines semantic understanding with traditional text search
+- **Processing**: Automatic background embedding generation with rate limiting
 
 ### Storage
-- **User Data**: PostgreSQL via Supabase
-- **Images**: Supabase Storage for screenshot storage
+- **User Data**: SQLite via Turso with global edge replication
+- **Images**: Local file storage (migration to Uploadthing/R2 planned)
 - **Local Caching**: IndexedDB for offline functionality
 
 ## Getting Started
@@ -79,16 +88,25 @@ TabTriage is a mobile-first web application designed to help users manage and or
 
 3. Create a `.env.local` file in the root directory with the following variables:
    ```
-   NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+   # Turso Database Configuration
+   TURSO_DATABASE_URL=your_turso_database_url
+   TURSO_AUTH_TOKEN=your_turso_auth_token
+   
+   # AI API Keys
    OPENAI_API_KEY=your_openai_api_key
-   NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET=tab-screenshots
+   JINA_API_KEY=your_jina_api_key
+   JINA_API_URL=https://api.jina.ai/v1/embeddings
    ```
 
-4. Set up Supabase Storage:
-   - Create a new bucket named `tab-screenshots` in your Supabase project
-   - Set the bucket's privacy settings to either public (for easy access) or authenticated (for more security)
-   - Create a policy that allows users to upload and read files
+4. Set up the database:
+   ```bash
+   npm run migrate
+   ```
+
+5. (Optional) View your database:
+   ```bash
+   npm run db:studio
+   ```
 
 ### Running the Development Server
 
@@ -182,14 +200,64 @@ tabtriage/
 └── tsconfig.json        # TypeScript configuration
 ```
 
+## Advanced Features
+
+### Vector Search & Embeddings
+- **1024-dimensional embeddings** using Jina Embeddings v3
+- **Task-specific optimization** with LoRA adapters:
+  - `retrieval.passage` for stored content
+  - `retrieval.query` for search queries
+  - `text-matching` for similarity comparison
+- **Matryoshka embeddings** support (32-1024 dimensions)
+- **Multilingual support** for 89+ languages with optimized performance for 30 languages
+- **Automatic embedding generation** for new tabs with background processing
+
+### Search Capabilities
+- **Semantic similarity search** finds related content by meaning
+- **Hybrid search** with configurable vector/text weights (default 70%/30%)
+- **BM25 scoring** for traditional keyword relevance
+- **Vector distance scoring** for semantic relevance
+- **Real-time search** with instant results as you type
+- **Search debugging** with detailed relevance scores and ranking
+
+### Database Architecture
+- **Turso SQLite** with global edge replication
+- **Native vector support** with F32_BLOB(1024) columns
+- **Vector indexing** using libsql_vector_idx for fast similarity search
+- **FTS5 virtual tables** for full-text search with advanced tokenization
+- **Drizzle ORM** for type-safe database operations
+
+## API Testing Endpoints
+
+For development and debugging, the following test endpoints are available:
+
+```bash
+# Test Jina API connection
+curl "http://localhost:3000/api/test-jina?action=test-connection"
+
+# Get embedding statistics
+curl "http://localhost:3000/api/test-jina?action=stats"
+
+# Generate embeddings for existing tabs
+curl "http://localhost:3000/api/test-jina?action=update-embeddings&batchSize=10"
+
+# Test hybrid search
+curl "http://localhost:3000/api/test-jina?action=search&q=your%20search%20query&limit=5"
+
+# Test embedding generation
+curl "http://localhost:3000/api/test-jina?action=test-embedding&text=Your%20test%20text"
+```
+
 ## Future Enhancements
 
 - Browser extension for direct tab import
 - Offline mode with full functionality
 - Collaborative sharing of organized collections
-- Advanced analytics on browsing habits
+- Advanced analytics on browsing habits and content patterns
 - Reading mode for saved content
-- Advanced filtering and sorting options
+- Advanced filtering with semantic similarity clustering
+- Custom embedding fine-tuning for domain-specific content
+- Multi-modal search combining text and visual content
 
 ## Contributing
 

@@ -78,8 +78,8 @@ export default function Home() {
                 <div className="text-primary-600 dark:text-primary-400 mb-4 flex justify-center">
                   <span className="text-3xl font-bold bg-primary-100 dark:bg-primary-800 text-primary-600 dark:text-primary-300 w-12 h-12 rounded-full flex items-center justify-center">2</span>
                 </div>
-                <h3 className="text-xl font-semibold mb-2">Triage</h3>
-                <p className="text-gray-600 dark:text-gray-300">Quickly swipe to keep or discard tabs</p>
+                <h3 className="text-xl font-semibold mb-2">Workspace</h3>
+                <p className="text-gray-600 dark:text-gray-300">Triage and organize tabs in one unified interface</p>
               </motion.div>
               
               <motion.div 
@@ -92,8 +92,8 @@ export default function Home() {
                 <div className="text-primary-600 dark:text-primary-400 mb-4 flex justify-center">
                   <span className="text-3xl font-bold bg-primary-100 dark:bg-primary-800 text-primary-600 dark:text-primary-300 w-12 h-12 rounded-full flex items-center justify-center">3</span>
                 </div>
-                <h3 className="text-xl font-semibold mb-2">Organize</h3>
-                <p className="text-gray-600 dark:text-gray-300">Sort tabs into folders with AI-assisted categorization</p>
+                <h3 className="text-xl font-semibold mb-2">Export</h3>
+                <p className="text-gray-600 dark:text-gray-300">Export organized tabs back to your browser</p>
               </motion.div>
             </div>
           </div>

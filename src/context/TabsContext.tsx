@@ -205,10 +205,11 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     });
     
     // Save the updated tab to the server
-    saveTabMutation.mutate({ ...tab, ...updates })
-      .catch(error => {
+    saveTabMutation.mutate({ ...tab, ...updates }, {
+      onError: (error) => {
         logger.error(`Failed to save tab ${tabId} to server:`, error);
-      });
+      }
+    });
   }, [tabs, queryClient, saveTabMutation])
   
   // Delete a tab
@@ -228,10 +229,11 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     });
     
     // Delete the tab from the server
-    deleteTabMutation.mutate(tabId)
-      .catch(error => {
+    deleteTabMutation.mutate(tabId, {
+      onError: (error) => {
         logger.error(`Failed to delete tab ${tabId} from server:`, error);
-      });
+      }
+    });
   }, [tabs, queryClient, deleteTabMutation])
   
   // Delete all discarded tabs
@@ -254,10 +256,11 @@ export function TabsProvider({ children }: { children: ReactNode }) {
     
     // Delete each discarded tab from the server
     discardedTabs.forEach(tab => {
-      deleteTabMutation.mutate(tab.id)
-        .catch(error => {
+      deleteTabMutation.mutate(tab.id, {
+        onError: (error) => {
           logger.error(`Failed to delete discarded tab ${tab.id} from server:`, error);
-        });
+        }
+      });
     })
   }, [tabs, queryClient, deleteTabMutation])
   

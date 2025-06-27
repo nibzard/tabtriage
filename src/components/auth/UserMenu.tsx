@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabase } from '@/utils/supabase'
 import { logger } from '@/utils/logger'
 
 export type User = {
@@ -37,7 +36,7 @@ export function UserMenu({ user }: UserMenuProps) {
 
   const handleSignOut = async () => {
     try {
-      await supabase.auth.signOut()
+      // TODO: Implement proper sign out when auth system is chosen
       router.refresh()
     } catch (error) {
       logger.error('Error signing out:', error)

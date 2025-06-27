@@ -1,40 +1,41 @@
 import { NextResponse } from 'next/server';
-import { createServerSupabaseClient, getServerUserId } from '@/utils/supabase-server';
+import { db, generateId } from '@/db/client';
+import { folders } from '@/db/schema';
+import { eq, and, desc } from 'drizzle-orm';
 import { logger } from '@/utils/logger';
-import { Folder } from '@/types/Folder';
+import { ensureUserExists } from '@/utils/ensure-user';
+
+// Simple session management (replace with proper auth later)
+async function getCurrentUserId(): Promise<string> {
+  const userId = 'user_001';
+  await ensureUserExists(userId);
+  return userId;
+}
 
 /**
  * GET /api/folders - Get all folders for the current user
  */
 export async function GET() {
   try {
-    const supabase = createServerSupabaseClient();
-    const userId = await getServerUserId();
+    const userId = await getCurrentUserId();
     
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const userFolders = await db
+      .select()
+      .from(folders)
+      .where(eq(folders.userId, userId))
+      .orderBy(desc(folders.createdAt));
     
-    const { data: folderRecords, error } = await supabase
-      .from('folders')
-      .select('*')
-      .eq('user_id', userId)
-      .order('name');
-    
-    if (error) {
-      logger.error('Error getting folders:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-    
-    // Convert to Folder objects
-    const folders = folderRecords.map(record => ({
-      id: record.id,
-      name: record.name,
-      color: record.color,
-      icon: record.icon
+    // Transform to match frontend Folder interface
+    const transformedFolders = userFolders.map(folder => ({
+      id: folder.id,
+      name: folder.name,
+      color: folder.color || '#6366f1',
+      icon: folder.icon || 'folder',
+      createdAt: folder.createdAt || new Date().toISOString(),
+      updatedAt: folder.updatedAt || new Date().toISOString()
     }));
     
-    return NextResponse.json(folders);
+    return NextResponse.json(transformedFolders);
   } catch (error) {
     logger.error('Error in GET folders route:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -46,36 +47,48 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   try {
-    const supabase = createServerSupabaseClient();
-    const userId = await getServerUserId();
+    const userId = await getCurrentUserId();
     
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    let folderData;
+    try {
+      folderData = await request.json();
+    } catch (error) {
+      logger.error('Invalid JSON in request body:', error);
+      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
     }
     
-    const folder = await request.json() as Folder;
+    if (!folderData || !folderData.name) {
+      return NextResponse.json({ error: 'Folder name is required' }, { status: 400 });
+    }
     
-    // Convert to database record
+    // Ensure folder has an ID
+    const folderId = folderData.id || generateId();
+    
     const folderRecord = {
-      id: folder.id,
-      user_id: userId,
-      name: folder.name || 'Untitled Folder',
-      color: folder.color || null,
-      icon: folder.icon || null
+      id: folderId,
+      userId: userId,
+      name: folderData.name,
+      color: folderData.color || '#6366f1',
+      icon: folderData.icon || 'folder',
+      createdAt: folderData.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
     
     // Insert or update the folder
-    const { data, error } = await supabase
-      .from('folders')
-      .upsert(folderRecord)
-      .select();
+    await db
+      .insert(folders)
+      .values(folderRecord)
+      .onConflictDoUpdate({
+        target: folders.id,
+        set: {
+          name: folderRecord.name,
+          color: folderRecord.color,
+          icon: folderRecord.icon,
+          updatedAt: folderRecord.updatedAt
+        }
+      });
     
-    if (error) {
-      logger.error('Error saving folder:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-    
-    return NextResponse.json({ success: true, id: folder.id });
+    return NextResponse.json({ success: true, id: folderId });
   } catch (error) {
     logger.error('Error in POST folders route:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -83,17 +96,11 @@ export async function POST(request: Request) {
 }
 
 /**
- * DELETE /api/folders/:id - Delete a folder
+ * DELETE /api/folders - Delete a folder
  */
 export async function DELETE(request: Request) {
   try {
-    const supabase = createServerSupabaseClient();
-    const userId = await getServerUserId();
-    
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    
+    const userId = getCurrentUserId();
     const url = new URL(request.url);
     const folderId = url.searchParams.get('id');
     
@@ -101,24 +108,14 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Folder ID required' }, { status: 400 });
     }
     
-    // Update tabs that were in this folder
-    await supabase
-      .from('tabs')
-      .update({ folder_id: null })
-      .eq('folder_id', folderId)
-      .eq('user_id', userId);
-    
-    // Delete the folder
-    const { error } = await supabase
-      .from('folders')
-      .delete()
-      .eq('id', folderId)
-      .eq('user_id', userId); // Ensure the folder belongs to the user
-    
-    if (error) {
-      logger.error('Error deleting folder:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    // Delete the folder (ensure it belongs to the user)
+    // Note: tabs.folder_id will be set to NULL due to ON DELETE SET NULL
+    await db
+      .delete(folders)
+      .where(and(
+        eq(folders.id, folderId),
+        eq(folders.userId, userId)
+      ));
     
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -121,3 +121,18 @@ export function useFoldersContext() {
   }
   return context
 }
+
+// Safe version that returns default values if provider is not available
+export function useFoldersContextSafe() {
+  const context = useContext(FoldersContext)
+  if (context === undefined) {
+    return {
+      folders: [],
+      isLoading: false,
+      createFolder: async () => ({ id: '', name: '', color: '' }),
+      updateFolder: () => {},
+      deleteFolder: () => {},
+    }
+  }
+  return context
+}

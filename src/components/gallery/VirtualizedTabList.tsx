@@ -50,7 +50,7 @@ export function VirtualizedTabList({
   const colCount = getColCount()
 
   // Group tabs into rows for the grid layout
-  const rows = []
+  const rows: Tab[][] = []
   for (let i = 0; i < tabs.length; i += colCount) {
     rows.push(tabs.slice(i, i + colCount))
   }
@@ -109,28 +109,18 @@ export function VirtualizedTabList({
                       transition={{ duration: 0.2 }}
                       className="relative"
                     >
-                      {/* Selection indicator (simplified) */}
-                      {selectedTabs.has(tab.id) && (
-                        <div className="absolute top-2 left-2 z-10 bg-primary-500 dark:bg-primary-600 w-6 h-6 flex items-center justify-center rounded-full shadow-md">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-white" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                        </div>
-                      )}
-                      
-                      {/* Use click to select instead of checkbox */}
-                      <div onClick={() => onToggleSelect(tab.id)} className="cursor-pointer">
-                        <TabCard
-                          tab={tab}
-                          isExpanded={expandedTabId === tab.id}
-                          onToggleExpand={() => onToggleExpand(tab.id)}
-                          onKeep={() => onKeep(tab.id)}
-                          onDiscard={showingDiscarded && onDeleteTab 
-                            ? () => onDeleteTab(tab.id) 
-                            : () => onDiscard(tab.id)}
-                          onAssignFolder={(folderId) => onAssignFolder(tab.id, folderId)}
-                        />
-                      </div>
+                      <TabCard
+                        tab={tab}
+                        isExpanded={expandedTabId === tab.id}
+                        isSelected={selectedTabs.has(tab.id)}
+                        onToggleExpand={() => onToggleExpand(tab.id)}
+                        onToggleSelect={() => onToggleSelect(tab.id)}
+                        onKeep={() => onKeep(tab.id)}
+                        onDiscard={showingDiscarded && onDeleteTab 
+                          ? () => onDeleteTab(tab.id) 
+                          : () => onDiscard(tab.id)}
+                        onAssignFolder={(folderId) => onAssignFolder(tab.id, folderId)}
+                      />
                     </motion.div>
                   ))}
                 </div>

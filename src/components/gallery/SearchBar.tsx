@@ -1,23 +1,46 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { debounce } from 'lodash';
+import { Search, X, Clock, Zap, Loader2 } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+
+// Simple debounce implementation
+const debounce = (func: Function, wait: number) => {
+  let timeout: NodeJS.Timeout;
+  return function executedFunction(...args: any[]) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+};
 
 interface SearchBarProps {
   onSearch: (query: string) => void;
   placeholder?: string;
   initialQuery?: string;
   onSearchWeightChange?: (value: number) => void;
+  isSearching?: boolean;
+  searchResultsCount?: number;
+  searchMode?: 'keyword' | 'hybrid' | 'none';
 }
 
 const SearchBar: React.FC<SearchBarProps> = ({ 
   onSearch, 
   placeholder = 'Search tabs...', 
   initialQuery = '',
-  onSearchWeightChange
+  onSearchWeightChange,
+  isSearching = false,
+  searchResultsCount = 0,
+  searchMode = 'none'
 }) => {
   const [query, setQuery] = useState(initialQuery);
+  const [isFocused, setIsFocused] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Debounce the search to avoid too many requests
   const debouncedSearch = useCallback(
@@ -25,7 +48,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
       onSearch(searchQuery);
       
       // Update URL with search param
-      const params = new URLSearchParams(searchParams.toString());
+      const params = new URLSearchParams(searchParams?.toString() || '');
       if (searchQuery) {
         params.set('q', searchQuery);
       } else {
@@ -50,76 +73,106 @@ const SearchBar: React.FC<SearchBarProps> = ({
   };
 
   return (
-    <div className="relative w-full max-w-xl">
-      <div className="relative">
-        <input
-          type="text"
-          value={query}
-          onChange={handleInputChange}
-          placeholder={placeholder}
-          className="w-full px-4 py-2 pl-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        />
-        <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-          <svg
-            className="w-5 h-5 text-gray-400"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-            ></path>
-          </svg>
-        </div>
-        {query && (
-          <div className="absolute inset-y-0 right-0 flex items-center pr-3">
-            <button
-              type="button"
-              onClick={handleClear}
-              className="text-gray-400 hover:text-gray-500"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                  d="M6 18L18 6M6 6l12 12"
-                ></path>
-              </svg>
-            </button>
-          </div>
-        )}
-      </div>
+    <div className="relative w-full max-w-2xl">
+      <Card className={`transition-all duration-200 ${isFocused ? 'ring-2 ring-primary shadow-lg' : 'shadow-sm'}`}>
+        <CardContent className="p-0">
+          <div className="relative">
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={handleInputChange}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
+              placeholder={placeholder}
+              className="w-full px-4 py-3 pl-12 pr-12 bg-transparent border-none rounded-lg focus:outline-none text-sm"
+            />
+            
+            {/* Search Icon */}
+            <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none">
+              {isSearching ? (
+                <Loader2 className="h-4 w-4 text-muted-foreground animate-spin" />
+              ) : (
+                <Search className="h-4 w-4 text-muted-foreground" />
+              )}
+            </div>
 
-      <div className="mt-2 flex items-center text-sm text-gray-500">
-        <div className="flex items-center space-x-2">
-          <input 
-            type="range" 
-            min="0" 
-            max="2" 
-            step="0.1" 
-            defaultValue="1" 
-            className="accent-blue-500"
-            title="Adjust balance between keyword and semantic search"
-            onChange={(e) => onSearchWeightChange?.(parseFloat(e.target.value))}
-          />
-          <span>Search Mode</span>
-        </div>
-        <div className="text-xs ml-auto">
-          <span className="mr-2">Keywords</span>
-          <span>Semantic</span>
-        </div>
-      </div>
+            {/* Clear Button */}
+            {query && (
+              <div className="absolute inset-y-0 right-0 flex items-center pr-4">
+                <button
+                  type="button"
+                  onClick={handleClear}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Search Results Summary */}
+          {query && !isSearching && (
+            <div className="px-4 pb-3 pt-1 border-t border-border/50">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  {searchResultsCount > 0 ? (
+                    <span>Found {searchResultsCount} results</span>
+                  ) : (
+                    <span>No results found</span>
+                  )}
+                  
+                  {searchMode === 'hybrid' && (
+                    <Badge variant="secondary" className="text-xs">
+                      <Zap className="h-3 w-3 mr-1" />
+                      AI Search
+                    </Badge>
+                  )}
+                  
+                  {searchMode === 'keyword' && (
+                    <Badge variant="outline" className="text-xs">
+                      <Clock className="h-3 w-3 mr-1" />
+                      Keyword
+                    </Badge>
+                  )}
+                </div>
+                
+                <div className="text-xs">
+                  Press Enter to search
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Advanced Search Controls */}
+      {isFocused && (
+        <Card className="mt-2 border-dashed">
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center gap-3">
+                <span className="text-muted-foreground">Search Mode:</span>
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="2" 
+                  step="0.1" 
+                  defaultValue="1" 
+                  className="w-24 accent-primary"
+                  title="Adjust balance between keyword and semantic search"
+                  onChange={(e) => onSearchWeightChange?.(parseFloat(e.target.value))}
+                />
+              </div>
+              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <span>Keyword</span>
+                <span>Hybrid</span>
+                <span>Semantic</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };

@@ -5,6 +5,7 @@ export interface Tab {
   domain: string
   dateAdded: string
   screenshot?: string
+  fullScreenshot?: string
   summary: string
   category: string
   tags: string[]
