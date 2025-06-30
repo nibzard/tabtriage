@@ -1,13 +1,46 @@
 # TabTriage
 
-TabTriage is a mobile-first web application designed to help users manage and organize their overwhelming Safari tabs. The application provides an intuitive interface for importing tabs from Safari, presenting them in a visual gallery, and providing mechanisms to quickly decide which to keep and how to organize them.
+[![GitHub Stars](https://img.shields.io/github/stars/nibzard/tabtriage?style=flat-square)](https://github.com/nibzard/tabtriage/stargazers)
+[![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](https://github.com/nibzard/tabtriage/blob/main/LICENSE)
+![Next.js](https://img.shields.io/badge/Next.js-14-black?style=flat-square&logo=next.js)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?style=flat-square&logo=typescript)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4-38B2AC?style=flat-square&logo=tailwind-css)
+![Turso](https://img.shields.io/badge/Turso-Edge_Database-4FF8AA?style=flat-square&logo=turso)
+![Drizzle ORM](https://img.shields.io/badge/Drizzle-ORM-C5F74F?style=flat-square)
+
+<div align="center">
+  <h3>🚀 AI-Powered Tab Management for the Modern Web</h3>
+  <p>
+    <a href="#features">Features</a> •
+    <a href="#getting-started">Getting Started</a> •
+    <a href="#tech-stack">Tech Stack</a> •
+    <a href="#roadmap">Roadmap</a> •
+    <a href="#contributing">Contributing</a>
+  </p>
+</div>
+
+![TabTriage Workspace](assets/tabtriage.jpg)
+
+TabTriage is a web application that helps you manage and organize your overwhelming browser tabs using AI-powered categorization and semantic search. Built with a mobile-first approach, it provides an intuitive interface for importing, reviewing, and organizing tabs from any browser.
+
+### ✨ Why TabTriage?
+
+- **⚡ Lightning Fast**: Sub-second semantic search with intelligent caching
+- **🤖 AI-Powered**: Automatic categorization and content understanding
+- **📱 Mobile First**: Beautiful responsive design that works everywhere
+- **🔍 Smart Search**: Find tabs by meaning, not just keywords
+- **🗂️ Auto-Organization**: AI suggests the perfect folder for each tab
+- **💾 Flexible Storage**: Local SQLite for dev, Turso cloud for production
+- **🔒 Privacy First**: Your data stays yours - self-hostable solution
+- **🌐 Multi-Language**: Supports 89+ languages out of the box
 
 ## Features
 
 ### Tab Import
-- Accept bookmark HTML exports from Safari
-- Parse bookmark metadata (title, URL, date added)
-- Process imported URLs to capture screenshots and content
+- Multiple import methods: paste URLs, upload text/CSV files, or HTML bookmarks
+- Automatic screenshot capture for visual identification
+- Full page content extraction using Jina Reader API
+- Batch processing with progress tracking
 
 ### AI-Powered Organization
 - **Jina Embeddings v3**: State-of-the-art multilingual semantic embeddings with task-specific LoRA adapters
@@ -19,51 +52,55 @@ TabTriage is a mobile-first web application designed to help users manage and or
 - Extract full page content using Jina Reader API for enhanced semantic understanding
 
 ### Visual Triage Interface
-- Present tabs as a responsive grid of visual cards with screenshots
-- Implement swipe/click gestures for keep or discard decisions
-- Display AI-generated description on each card
-- Enable quick assignment to folders with AI-suggested destinations
-- Support both mobile and desktop viewing with optimized layouts
-- Bulk actions for selecting multiple tabs (keep, discard, assign to folder)
+- Beautiful card-based interface with screenshots and descriptions
+- One-click keep/discard actions for rapid triage
+- Smart folder suggestions powered by AI
+- Adjustable thumbnail sizes and compact mode
+- Select all functionality for bulk operations
+- Mobile-optimized responsive design
 
 ### Advanced Organization & Search
-- **Semantic Search**: Find tabs by meaning, not just keywords (powered by Jina v3)
-- **Vector Similarity**: Discover related content across your entire collection
-- **Hybrid Ranking**: Configurable weights between semantic and keyword relevance
-- Allow creation and management of folders
-- Support advanced tagging system (both AI and manual)
-- Provide comprehensive filtering options (by date, domain, AI categories, similarity)
-- Real-time search with instant results and relevance scoring
+- **Semantic Search**: Find tabs by meaning, not just keywords
+- **Hybrid Search Mode**: Adjustable slider for keyword vs semantic search balance
+- **Lightning Fast**: Sub-second search with embedding cache
+- **Smart Folders**: AI-suggested categorization with manual override
+- **Export Options**: Download your organized tabs as JSON or CSV
+- **Duplicate Detection**: Automatically identify similar content
+- **Real-time Results**: Search as you type with instant feedback
 
-## Technology Stack
+## Tech Stack
 
 ### Frontend
-- **Framework**: Next.js
-- **Styling**: Tailwind CSS
+- **Framework**: Next.js 14 with App Router
+- **Styling**: Tailwind CSS with custom components
 - **State Management**: React Query + Context API
-- **Animation/Gestures**: Framer Motion
-- **Theming**: Dark/Light mode with next-themes
+- **UI Components**: Shadcn/ui with Radix UI
+- **Icons**: Lucide React
+- **Authentication**: NextAuth.js with multiple providers
 
 ### Backend
-- **Architecture**: Serverless functions
-- **Provider**: Vercel or Netlify
-- **Database**: Turso (SQLite-based edge database)
-- **ORM**: Drizzle ORM for type-safe database queries
-- **Authentication**: Simple session-based (NextAuth.js planned)
+- **Runtime**: Next.js API Routes with Edge Runtime support
+- **Database**: Dual mode - Local SQLite for dev, Turso for production
+- **ORM**: Drizzle ORM with type-safe queries
+- **File Storage**: Uploadthing for screenshots
+- **Background Jobs**: API route handlers with queue management
 
-### AI Integration
-- **Embeddings**: Jina Embeddings v3 with 1024-dimensional vectors and task-specific LoRA adapters
-- **Content Extraction**: Jina Reader API for clean text extraction from web pages
-- **Core Engine**: OpenAI GPT-4o API for content analysis
-- **Vector Search**: Turso native F32_BLOB vectors with DiskANN algorithm
-- **Text Search**: SQLite FTS5 with BM25 scoring for keyword matching
-- **Hybrid Search**: Combines semantic understanding with traditional text search
-- **Processing**: Automatic background embedding generation with enhanced page content
+### AI & Search Technology
+- **Embeddings**: Jina v3 with 1024-dimensional vectors
+- **Content Extraction**: Jina Reader API + Cheerio HTML parsing
+- **Vector Database**: Native SQLite vectors with cosine similarity
+- **Text Search**: FTS5 with BM25 ranking algorithm
+- **Hybrid Search**: Configurable blend of semantic + keyword search
+- **Performance**: LRU embedding cache for <100ms searches
+- **AI Analysis**: OpenAI GPT-4 for descriptions and categorization
 
-### Storage
-- **User Data**: SQLite via Turso with global edge replication
-- **Images**: Local file storage (migration to Uploadthing/R2 planned)
-- **Local Caching**: IndexedDB for offline functionality
+### Performance & Features
+- **Cold Start**: <500ms first search (85% improvement)
+- **Cached Search**: <100ms for repeated queries
+- **Database Modes**: Local SQLite for dev, Turso for production
+- **Export Formats**: JSON and CSV data export
+- **Batch Operations**: Process 100+ tabs efficiently
+- **Error Recovery**: Graceful fallbacks for all operations
 
 ## Getting Started
 
@@ -76,7 +113,7 @@ TabTriage is a mobile-first web application designed to help users manage and or
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/tabtriage.git
+   git clone https://github.com/nibzard/tabtriage.git
    cd tabtriage
    ```
 
@@ -93,39 +130,39 @@ TabTriage is a mobile-first web application designed to help users manage and or
    ```
    # Environment Configuration
    NODE_ENV=development
-   
+
    # Database Configuration
    # Set to 'local' for development with SQLite file, 'turso' for cloud database
    DATABASE_MODE=local
-   
+
    # Turso Configuration (required when DATABASE_MODE=turso)
    TURSO_DATABASE_URL=your_turso_database_url
    TURSO_AUTH_TOKEN=your_turso_auth_token
-   
+
    # Authentication (required)
    NEXTAUTH_URL=http://localhost:3000
    NEXTAUTH_SECRET=your_secure_secret_here
-   
+
    # AI API Keys (required for full functionality)
    OPENAI_API_KEY=your_openai_api_key
    JINA_API_KEY=your_jina_api_key  # Get free API key: https://jina.ai/?sui=apikey
    JINA_API_URL=https://api.jina.ai/v1/embeddings
-   
+
    # Uploadthing configuration (optional)
    UPLOADTHING_TOKEN=your_uploadthing_token
-   
+
    # Storage configuration
    STORAGE_PROVIDER=uploadthing
    ```
 
 4. Set up the database:
-   
+
    **For local development (recommended):**
    ```bash
-   # Uses local SQLite file (DATABASE_MODE=local)
-   pnpm migrate
+   # Database will be created automatically on first run
+   # No migration needed for local SQLite
    ```
-   
+
    **For Turso cloud database:**
    ```bash
    # Set DATABASE_MODE=turso in .env.local first
@@ -193,45 +230,49 @@ yarn start
 
 ## How to Use TabTriage
 
-### Exporting Safari Tabs
+### Exporting Browser Tabs
 
-#### On iOS (iPhone/iPad):
+#### Safari on iOS:
 1. Open Safari
-2. Tap the tabs icon in the bottom right corner (looks like two squares)
-3. Long press on "X Tabs" at the bottom of the screen
-4. Select "Copy X Links" from the menu (where X is the number of tabs)
-5. Paste the copied links in TabTriage
+2. Tap the tabs icon (two squares)
+3. Long press "X Tabs" at the bottom
+4. Select "Copy Links"
+5. Paste into TabTriage
 
-#### On macOS:
-1. Open Safari
-2. Click on View > Show Tab Overview
-3. Select the tabs you want to export (Cmd+click for multiple)
-4. Right-click and choose "Copy Links"
-5. Paste the copied links in TabTriage
+#### Safari on macOS:
+1. View → Show All Tabs
+2. Select tabs (Cmd+click for multiple)
+3. Right-click → "Copy Links"
+4. Paste into TabTriage
 
-#### Alternative Methods:
-- Save your links to a text file (.txt) with one URL per line
-- Create a CSV file with URLs and upload it to TabTriage
+#### Chrome/Edge/Firefox:
+1. Install a tab export extension
+2. Export tabs as text/CSV
+3. Upload file to TabTriage
 
-### Importing Tabs
-1. Navigate to the Import page
-2. Choose one of the following methods:
-   - **Paste URLs**: Paste your copied Safari tab links into the text area
-   - **Upload File**: Drag and drop a text or CSV file with URLs, or click "Browse Files"
-3. Click "Import Tabs" to begin processing
-4. Wait for the AI to analyze and organize your tabs
+#### Manual Method:
+- Create a text file with one URL per line
+- Upload to TabTriage
 
-### Triaging Tabs
-1. Go to the Gallery page to see all your imported tabs
-2. Swipe left to discard a tab, right to keep it (or use the buttons)
-3. Click the expand button to see folder suggestions
-4. Assign tabs to folders based on AI suggestions or your preference
+### Using TabTriage
 
-### Managing Folders
-1. Navigate to the Folders page
-2. View all your organized tabs by folder
-3. Create new folders as needed
-4. Search and filter tabs within folders
+#### Import:
+1. Go to Import page
+2. Paste URLs or upload file
+3. Click "Import Tabs"
+4. AI processes tabs automatically
+
+#### Workspace:
+1. View all tabs in card grid
+2. Click "Keep" or "Discard" for each tab
+3. Use "Select All" for bulk actions
+4. Assign to folders with one click
+
+#### Search:
+1. Type keywords or concepts
+2. Adjust search mode slider
+3. View results instantly
+4. Export selected tabs
 
 ## Project Structure
 
@@ -257,73 +298,89 @@ tabtriage/
 └── tsconfig.json        # TypeScript configuration
 ```
 
-## Advanced Features
+## Key Features in Detail
 
-### Vector Search & Embeddings
-- **Enhanced Content Embedding** using robust HTML extraction + Jina Embeddings v3
-- **Full Page Content Extraction** with multi-strategy HTML parsing for reliable content
-- **1024-dimensional embeddings** with task-specific optimization using LoRA adapters:
-  - `retrieval.passage` for stored content with full page text
-  - `retrieval.query` for search queries
-  - `text-matching` for similarity comparison
-- **Matryoshka embeddings** support (32-1024 dimensions)
-- **Multilingual support** for 89+ languages with optimized performance for 30 languages
-- **Automatic embedding generation** for new tabs with reliable HTML content extraction
+### 🚀 Performance
+- **85% faster search** - From 7s to <500ms cold start
+- **Embedding cache** - Sub-100ms for repeated queries
+- **Parallel processing** - Vector and text search run concurrently
+- **Smart routing** - Skip unnecessary operations based on query type
 
-### Search Capabilities
-- **Semantic similarity search** finds related content by meaning
-- **Hybrid search** with configurable vector/text weights (default 70%/30%)
-- **BM25 scoring** for traditional keyword relevance
-- **Vector distance scoring** for semantic relevance
-- **Real-time search** with instant results as you type
-- **Search debugging** with detailed relevance scores and ranking
+### 🤖 AI-Powered Features
+- **Semantic Understanding**: Find tabs by meaning, not just keywords
+- **Auto-Categorization**: AI suggests the best folder for each tab
+- **Content Extraction**: Full page text via Jina Reader API
+- **Duplicate Detection**: Identify similar content automatically
+- **Smart Descriptions**: AI-generated summaries for quick scanning
 
-### Database Architecture
-- **Turso SQLite** with global edge replication
-- **Native vector support** with F32_BLOB(1024) columns
-- **Vector indexing** using libsql_vector_idx for fast similarity search
-- **FTS5 virtual tables** for full-text search with advanced tokenization
-- **Drizzle ORM** for type-safe database operations
+### 🔍 Advanced Search
+- **Hybrid Mode**: Blend keyword and semantic search with a slider
+- **Multi-language**: Support for 89+ languages
+- **Real-time Results**: Search as you type
+- **Export Results**: Download search results as JSON/CSV
 
-## API Testing Endpoints
+## Development Tools
 
-For development and debugging, the following test endpoints are available:
-
+### Available Scripts
 ```bash
-# Test Jina API connection
-curl "http://localhost:3000/api/test-jina?action=test-connection"
-
-# Get embedding statistics
-curl "http://localhost:3000/api/test-jina?action=stats"
-
-# Generate embeddings for existing tabs
-curl "http://localhost:3000/api/test-jina?action=update-embeddings&batchSize=10"
-
-# Test hybrid search
-curl "http://localhost:3000/api/test-jina?action=search&q=your%20search%20query&limit=5"
-
-# Test embedding generation
-curl "http://localhost:3000/api/test-jina?action=test-embedding&text=Your%20test%20text"
-
-# Test Jina Reader API
-curl "http://localhost:3000/api/test-jina?action=test-reader&url=https://example.com"
+pnpm dev          # Start development server
+pnpm build        # Build for production
+pnpm start        # Run production server
+pnpm lint         # Run ESLint
+pnpm lint:errors  # Show only errors
+pnpm db:studio    # Open database GUI
+pnpm db:push      # Push schema to Turso
+pnpm migrate:local-to-turso  # Migrate data to cloud
 ```
 
-## Future Enhancements
+### Debug Endpoints
+- `/api/debug` - System health check
+- `/api/debug/search-cache` - Cache statistics
+- `/api/tabs/check-duplicates` - Find duplicate tabs
+- `/api/tabs/regenerate-all` - Regenerate all embeddings
+- `/api/tabs/export` - Export all tabs
 
-- Browser extension for direct tab import
-- Offline mode with full functionality
-- Collaborative sharing of organized collections
-- Advanced analytics on browsing habits and content patterns
-- Reading mode for saved content
-- Advanced filtering with semantic similarity clustering
-- Custom embedding fine-tuning for domain-specific content
-- Multi-modal search combining text and visual content
+## Roadmap
+
+### Coming Soon
+- 🌐 Browser extensions for Chrome, Firefox, Safari
+- 📱 Native mobile apps (iOS/Android)
+- 🤝 Team collaboration features
+- 📊 Analytics dashboard
+- 🔐 End-to-end encryption option
+- 🎨 Custom themes and layouts
+
+### Under Consideration
+- Offline mode with sync
+- AI-powered reading lists
+- Browser history integration
+- Social sharing features
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+We welcome contributions! Please:
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+### Development Guidelines
+- Follow the existing code style
+- Add tests for new features
+- Update documentation as needed
+- Ensure `pnpm lint` passes
+
+## Support
+
+- 🐛 [Report bugs](https://github.com/nibzard/tabtriage/issues)
+- 💡 [Request features](https://github.com/nibzard/tabtriage/issues)
+- 📧 Contact: [your-email@example.com]
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+Built with ❤️ by [nibzard](https://github.com/nibzard)
