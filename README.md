@@ -33,14 +33,18 @@ TabTriage is a web application that helps you manage and organize your overwhelm
 - **💾 Flexible Storage**: Local SQLite for dev, Turso cloud for production
 - **🔒 Privacy First**: Your data stays yours - self-hostable solution
 - **🌐 Multi-Language**: Supports 89+ languages out of the box
+- **🛡️ Enterprise-Ready**: Robust import system handles 500+ tabs without data loss
+- **🧹 Smart URLs**: Automatic sanitization removes tracking while preserving functionality
 
 ## Features
 
-### Tab Import
-- Multiple import methods: paste URLs, upload text/CSV files, or HTML bookmarks
-- Automatic screenshot capture for visual identification
-- Full page content extraction using Jina Reader API
-- Batch processing with progress tracking
+### Robust Tab Import System
+- **Enterprise-Grade Import**: Handle 500+ tabs reliably with transaction-based batch processing
+- **Two-Stage Processing**: Immediate tab saving + background enrichment (screenshots, AI analysis)
+- **Smart URL Sanitization**: Automatically clean tracking parameters while preserving functionality
+- **Multiple Import Methods**: Paste URLs, upload text/CSV files, or HTML bookmarks
+- **Real-Time Progress Tracking**: Monitor import status with live updates and error recovery
+- **Zero Data Loss**: Atomic transactions ensure all tabs are saved before processing begins
 
 ### AI-Powered Organization
 - **Jina Embeddings v3**: State-of-the-art multilingual semantic embeddings with task-specific LoRA adapters
@@ -99,8 +103,10 @@ TabTriage is a web application that helps you manage and organize your overwhelm
 - **Cached Search**: <100ms for repeated queries
 - **Database Modes**: Local SQLite for dev, Turso for production
 - **Export Formats**: JSON and CSV data export
-- **Batch Operations**: Process 100+ tabs efficiently
-- **Error Recovery**: Graceful fallbacks for all operations
+- **Enterprise Import**: Process 500+ tabs with zero data loss
+- **Smart URL Cleanup**: Remove tracking parameters, preserve functionality
+- **Error Recovery**: Graceful fallbacks with automatic retry logic
+- **Background Processing**: Non-blocking screenshot and AI analysis
 
 ## Getting Started
 
@@ -256,11 +262,13 @@ yarn start
 
 ### Using TabTriage
 
-#### Import:
+#### Import (Enterprise-Grade):
 1. Go to Import page
-2. Paste URLs or upload file
-3. Click "Import Tabs"
-4. AI processes tabs automatically
+2. Paste URLs or upload file (supports 500+ tabs)
+3. Enable/disable URL sanitization as needed
+4. Click "Import Tabs" - all tabs saved immediately
+5. Background processing enriches tabs with screenshots and AI analysis
+6. Real-time progress tracking shows completion status
 
 #### Workspace:
 1. View all tabs in card grid
@@ -300,11 +308,14 @@ tabtriage/
 
 ## Key Features in Detail
 
-### 🚀 Performance
+### 🚀 Performance & Reliability
 - **85% faster search** - From 7s to <500ms cold start
 - **Embedding cache** - Sub-100ms for repeated queries
 - **Parallel processing** - Vector and text search run concurrently
 - **Smart routing** - Skip unnecessary operations based on query type
+- **Enterprise Import** - Handle 500+ tabs with transaction-based processing
+- **Zero Data Loss** - Robust error recovery and retry mechanisms
+- **Background Processing** - Non-blocking AI analysis and screenshot capture
 
 ### 🤖 AI-Powered Features
 - **Semantic Understanding**: Find tabs by meaning, not just keywords
@@ -312,12 +323,23 @@ tabtriage/
 - **Content Extraction**: Full page text via Jina Reader API
 - **Duplicate Detection**: Identify similar content automatically
 - **Smart Descriptions**: AI-generated summaries for quick scanning
+- **Intelligent URL Cleaning**: Remove tracking parameters while preserving functionality
 
 ### 🔍 Advanced Search
 - **Hybrid Mode**: Blend keyword and semantic search with a slider
 - **Multi-language**: Support for 89+ languages
 - **Real-time Results**: Search as you type
 - **Export Results**: Download search results as JSON/CSV
+
+### 🛡️ Enterprise Import System
+- **Batch Processing**: Handle 500+ tabs in a single import
+- **Transaction Safety**: Atomic operations ensure zero data loss
+- **Two-Stage Processing**: Immediate save + background enrichment
+- **Smart URL Cleaning**: Remove tracking parameters (utm_*, fbclid, sharing_token, etc.)
+- **Real-Time Progress**: Live status updates with retry mechanisms
+- **Error Recovery**: Automatic retry with exponential backoff
+- **Background Jobs**: Non-blocking screenshot and AI processing
+- **Academic URL Protection**: Preserve DOI, arXiv, PubMed functionality
 
 ## Development Tools
 
@@ -339,6 +361,9 @@ pnpm migrate:local-to-turso  # Migrate data to cloud
 - `/api/tabs/check-duplicates` - Find duplicate tabs
 - `/api/tabs/regenerate-all` - Regenerate all embeddings
 - `/api/tabs/export` - Export all tabs
+- `/api/tabs/batch` - Batch import endpoint
+- `/api/tabs/import-status` - Check import progress
+- `/api/tabs/process-batch` - Background processing status
 
 ## Roadmap
 
