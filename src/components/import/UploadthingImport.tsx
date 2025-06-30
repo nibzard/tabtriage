@@ -27,7 +27,7 @@ export function UploadthingImport({ onImportComplete }: UploadthingImportProps) 
 
   const handleUploadComplete = async (res: Array<{ url: string; name: string; key: string; size: number }>) => {
     try {
-      const files = res.map(file => ({ name: file.name, url: file.url }))
+      const files = res.map(file => ({ name: file.name, url: file.ufsUrl }))
       setUploadedFiles(files)
       toast.success(`Uploaded ${files.length} file(s) successfully!`)
       
@@ -54,7 +54,7 @@ export function UploadthingImport({ onImportComplete }: UploadthingImportProps) 
         setProcessingMessage(`Processing ${file.name}...`)
         
         // Download and parse the file from Uploadthing URL
-        const response = await fetch(file.url)
+        const response = await fetch(file.ufsUrl)
         if (!response.ok) {
           throw new Error(`Failed to download ${file.name}`)
         }

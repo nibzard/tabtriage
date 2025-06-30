@@ -15,9 +15,7 @@ const nextConfig = {
     dangerouslyAllowSVG: true,
     unoptimized: true, // Set to true for both dev and production to ensure images work
   },
-  experimental: {
-    serverComponentsExternalPackages: ['@xenova/transformers'],
-  },
+  serverExternalPackages: ['@xenova/transformers'],
   webpack: (config, { isServer }) => {
     if (isServer) {
       config.externals.push({

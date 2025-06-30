@@ -1,8 +1,8 @@
 import { logger } from '@/utils/logger'
 import { fileStorageService } from './fileStorageService'
 
-// Function to capture both thumbnail and full-height screenshots of a webpage
-export async function captureScreenshots(url: string): Promise<{ thumbnail: string | null, fullHeight: string | null }> {
+// Function to capture multiple screenshot sizes: thumbnail (400x266), preview (800x533), and full-height
+export async function captureScreenshots(url: string): Promise<{ thumbnail: string | null, preview: string | null, fullHeight: string | null }> {
   try {
     logger.debug(`Capturing screenshots for ${url}`)
     console.log(`DEBUG: Capturing screenshots for ${url}`)
@@ -10,12 +10,13 @@ export async function captureScreenshots(url: string): Promise<{ thumbnail: stri
     // Check if we're in a server environment
     if (typeof window === 'undefined') {
       // Server-side: use Playwright to capture real screenshots
-      const { thumbnail: thumbnailBlob, fullHeight: fullHeightBlob } = await captureRealScreenshots(url)
+      const { thumbnail: thumbnailBlob, preview: previewBlob, fullHeight: fullHeightBlob } = await captureRealScreenshots(url)
       
       let thumbnailUrl: string | null = null
+      let previewUrl: string | null = null
       let fullHeightUrl: string | null = null
       
-      // Handle thumbnail
+      // Handle thumbnail (400x266)
       if (thumbnailBlob) {
         logger.info(`Storing thumbnail using ${process.env.STORAGE_PROVIDER || 'uploadthing'} provider for ${url}`)
         console.log(`INFO: Storing thumbnail using ${process.env.STORAGE_PROVIDER || 'uploadthing'} provider for ${url}`)
@@ -28,6 +29,22 @@ export async function captureScreenshots(url: string): Promise<{ thumbnail: stri
         } else {
           logger.warn(`Thumbnail storage failed, falling back to data URL for ${url}`)
           thumbnailUrl = await convertBlobToDataURL(thumbnailBlob)
+        }
+      }
+      
+      // Handle preview screenshot (800x533)
+      if (previewBlob) {
+        logger.info(`Storing preview screenshot using ${process.env.STORAGE_PROVIDER || 'uploadthing'} provider for ${url}`)
+        console.log(`INFO: Storing preview screenshot using ${process.env.STORAGE_PROVIDER || 'uploadthing'} provider for ${url}`)
+        
+        previewUrl = await fileStorageService.storeScreenshot(previewBlob, url, 'preview')
+        
+        if (previewUrl) {
+          logger.info(`Successfully stored preview screenshot: ${previewUrl}`)
+          console.log(`INFO: Successfully stored preview screenshot: ${previewUrl}`)
+        } else {
+          logger.warn(`Preview storage failed, falling back to data URL for ${url}`)
+          previewUrl = await convertBlobToDataURL(previewBlob)
         }
       }
       
@@ -48,18 +65,21 @@ export async function captureScreenshots(url: string): Promise<{ thumbnail: stri
       }
       
       // If we couldn't capture real screenshots, fall back to placeholder
-      if (!thumbnailBlob && !fullHeightBlob) {
+      if (!thumbnailBlob && !previewBlob && !fullHeightBlob) {
         logger.warn(`Failed to capture real screenshots for ${url}, falling back to placeholder`)
         const placeholderBlob = await generateServerSidePlaceholder(url)
         if (placeholderBlob) {
           const placeholderUrl = await fileStorageService.storeScreenshot(placeholderBlob, url, 'thumbnail')
           thumbnailUrl = placeholderUrl || generateServerSideDataURL(url)
+          previewUrl = placeholderUrl || generateServerSideDataURL(url)
         } else {
-          thumbnailUrl = generateServerSideDataURL(url)
+          const fallbackUrl = generateServerSideDataURL(url)
+          thumbnailUrl = fallbackUrl
+          previewUrl = fallbackUrl
         }
       }
       
-      return { thumbnail: thumbnailUrl, fullHeight: fullHeightUrl }
+      return { thumbnail: thumbnailUrl, preview: previewUrl, fullHeight: fullHeightUrl }
     }
 
     // Client-side: generate placeholder image as before (real screenshots only work server-side)
@@ -78,6 +98,7 @@ export async function captureScreenshots(url: string): Promise<{ thumbnail: stri
     const storedUrl = await fileStorageService.storeScreenshot(placeholderImage, url, 'thumbnail')
     
     const thumbnailUrl = storedUrl || await convertBlobToDataURL(placeholderImage)
+    const previewUrl = thumbnailUrl // Use same image for both thumbnail and preview on client-side
     
     if (storedUrl) {
       logger.info(`Successfully stored screenshot: ${storedUrl}`)
@@ -87,22 +108,22 @@ export async function captureScreenshots(url: string): Promise<{ thumbnail: stri
       console.warn(`WARNING: Storage failed, falling back to data URL for ${url}`)
     }
     
-    return { thumbnail: thumbnailUrl, fullHeight: null }
+    return { thumbnail: thumbnailUrl, preview: previewUrl, fullHeight: null }
   } catch (error) {
     logger.error(`Error capturing screenshots for ${url}:`, error)
     console.error(`ERROR capturing screenshots for ${url}:`, error)
-    return { thumbnail: null, fullHeight: null }
+    return { thumbnail: null, preview: null, fullHeight: null }
   }
 }
 
 // Legacy function for backward compatibility
 export async function captureScreenshot(url: string): Promise<string | null> {
-  const { thumbnail } = await captureScreenshots(url)
-  return thumbnail
+  const { preview } = await captureScreenshots(url)
+  return preview // Use preview size for legacy compatibility
 }
 
-// Capture both thumbnail and full-height screenshots using local Playwright via API
-async function captureRealScreenshots(url: string): Promise<{ thumbnail: Blob | null, fullHeight: Blob | null }> {
+// Capture thumbnail, preview, and full-height screenshots using local Playwright via API
+async function captureRealScreenshots(url: string): Promise<{ thumbnail: Blob | null, preview: Blob | null, fullHeight: Blob | null }> {
   try {
     // Check if we're on server side
     if (typeof window === 'undefined') {
@@ -126,6 +147,7 @@ async function captureRealScreenshots(url: string): Promise<{ thumbnail: Blob | 
           const data = await response.json()
           if (data.success) {
             let thumbnail: Blob | null = null
+            let preview: Blob | null = null
             let fullHeight: Blob | null = null
             
             // Convert thumbnail data URL back to blob
@@ -136,6 +158,14 @@ async function captureRealScreenshots(url: string): Promise<{ thumbnail: Blob | 
               logger.info(`Successfully captured thumbnail for ${url} (${thumbnail.size} bytes)`)
             }
             
+            // Convert preview data URL back to blob
+            if (data.preview) {
+              const previewBase64Data = data.preview.split(',')[1]
+              const previewBuffer = Buffer.from(previewBase64Data, 'base64')
+              preview = new Blob([previewBuffer], { type: 'image/jpeg' })
+              logger.info(`Successfully captured preview for ${url} (${preview.size} bytes)`)
+            }
+            
             // Convert full-height data URL back to blob
             if (data.fullHeight) {
               const fullHeightBase64Data = data.fullHeight.split(',')[1]
@@ -144,7 +174,7 @@ async function captureRealScreenshots(url: string): Promise<{ thumbnail: Blob | 
               logger.info(`Successfully captured full-height screenshot for ${url} (${fullHeight.size} bytes)`)
             }
             
-            return { thumbnail, fullHeight }
+            return { thumbnail, preview, fullHeight }
           }
         }
       } catch (apiError) {
@@ -153,27 +183,25 @@ async function captureRealScreenshots(url: string): Promise<{ thumbnail: Blob | 
     }
 
     logger.warn(`Screenshot capture failed for ${url}`)
-    return { thumbnail: null, fullHeight: null }
+    return { thumbnail: null, preview: null, fullHeight: null }
   } catch (error) {
     logger.error(`Error capturing real screenshots for ${url}:`, error)
     console.error(`ERROR capturing real screenshots for ${url}:`, error)
-    return { thumbnail: null, fullHeight: null }
+    return { thumbnail: null, preview: null, fullHeight: null }
   }
 }
 
 // Legacy function for backward compatibility
 async function captureRealScreenshot(url: string): Promise<Blob | null> {
-  const { thumbnail } = await captureRealScreenshots(url)
-  return thumbnail
+  const { preview } = await captureRealScreenshots(url)
+  return preview // Use preview size for legacy compatibility
 }
 
 // Convert Blob to data URL
 async function convertBlobToDataURL(blob: Blob): Promise<string> {
-  return new Promise((resolve) => {
-    const reader = new FileReader()
-    reader.onloadend = () => resolve(reader.result as string)
-    reader.readAsDataURL(blob)
-  })
+  const arrayBuffer = await blob.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+  return `data:${blob.type};base64,${buffer.toString('base64')}`;
 }
 
 // Generate a placeholder image for development

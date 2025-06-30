@@ -168,7 +168,7 @@ export function FolderContentModern({
           <div className="text-center py-8 space-y-2">
             <Search className="h-8 w-8 mx-auto text-muted-foreground" />
             <p className="text-muted-foreground">
-              No tabs match "{searchQuery}"
+              No tabs match &quot;{searchQuery}&quot;
             </p>
             <Button 
               variant="ghost" 

@@ -24,7 +24,8 @@ interface SearchBarProps {
   onSearchWeightChange?: (value: number) => void;
   isSearching?: boolean;
   searchResultsCount?: number;
-  searchMode?: 'keyword' | 'hybrid' | 'none';
+  searchMode?: 'keyword' | 'hybrid' | 'semantic' | 'none';
+  searchWeight?: number;
 }
 
 const SearchBar: React.FC<SearchBarProps> = ({ 
@@ -34,13 +35,16 @@ const SearchBar: React.FC<SearchBarProps> = ({
   onSearchWeightChange,
   isSearching = false,
   searchResultsCount = 0,
-  searchMode = 'none'
+  searchMode = 'none',
+  searchWeight = 1
 }) => {
   const [query, setQuery] = useState(initialQuery);
   const [isFocused, setIsFocused] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   const inputRef = useRef<HTMLInputElement>(null);
+  const advancedRef = useRef<HTMLDivElement>(null);
 
   // Debounce the search to avoid too many requests
   const debouncedSearch = useCallback(
@@ -72,6 +76,25 @@ const SearchBar: React.FC<SearchBarProps> = ({
     debouncedSearch('');
   };
 
+  const handleFocus = () => {
+    setIsFocused(true);
+    setShowAdvanced(true);
+  };
+
+  const handleBlur = (e: React.FocusEvent) => {
+    // Check if the focus is moving to the advanced controls
+    if (advancedRef.current && advancedRef.current.contains(e.relatedTarget as Node)) {
+      return;
+    }
+    setIsFocused(false);
+    // Delay hiding advanced controls to allow for clicks
+    setTimeout(() => {
+      if (!advancedRef.current?.matches(':hover')) {
+        setShowAdvanced(false);
+      }
+    }, 150);
+  };
+
   return (
     <div className="relative w-full max-w-2xl">
       <Card className={`transition-all duration-200 ${isFocused ? 'ring-2 ring-primary shadow-lg' : 'shadow-sm'}`}>
@@ -82,8 +105,8 @@ const SearchBar: React.FC<SearchBarProps> = ({
               type="text"
               value={query}
               onChange={handleInputChange}
-              onFocus={() => setIsFocused(true)}
-              onBlur={() => setIsFocused(false)}
+              onFocus={handleFocus}
+              onBlur={handleBlur}
               placeholder={placeholder}
               className="w-full px-4 py-3 pl-12 pr-12 bg-transparent border-none rounded-lg focus:outline-none text-sm"
             />
@@ -125,7 +148,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
                   {searchMode === 'hybrid' && (
                     <Badge variant="secondary" className="text-xs">
                       <Zap className="h-3 w-3 mr-1" />
-                      AI Search
+                      Hybrid
                     </Badge>
                   )}
                   
@@ -133,6 +156,13 @@ const SearchBar: React.FC<SearchBarProps> = ({
                     <Badge variant="outline" className="text-xs">
                       <Clock className="h-3 w-3 mr-1" />
                       Keyword
+                    </Badge>
+                  )}
+                  
+                  {searchMode === 'semantic' && (
+                    <Badge variant="default" className="text-xs">
+                      <Zap className="h-3 w-3 mr-1" />
+                      Semantic
                     </Badge>
                   )}
                 </div>
@@ -147,8 +177,16 @@ const SearchBar: React.FC<SearchBarProps> = ({
       </Card>
 
       {/* Advanced Search Controls */}
-      {isFocused && (
-        <Card className="mt-2 border-dashed">
+      {showAdvanced && (
+        <Card 
+          ref={advancedRef}
+          className="mt-2 border-dashed"
+          onMouseLeave={() => {
+            if (!isFocused) {
+              setTimeout(() => setShowAdvanced(false), 100);
+            }
+          }}
+        >
           <CardContent className="p-3">
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-3">
@@ -158,7 +196,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
                   min="0" 
                   max="2" 
                   step="0.1" 
-                  defaultValue="1" 
+                  value={searchWeight} 
                   className="w-24 accent-primary"
                   title="Adjust balance between keyword and semantic search"
                   onChange={(e) => onSearchWeightChange?.(parseFloat(e.target.value))}

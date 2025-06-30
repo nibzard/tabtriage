@@ -1,0 +1,36 @@
+{
+  "extends": [
+    "next/core-web-vitals"
+  ],
+  "rules": {
+    // React/Next.js specific rules
+    "react/jsx-uses-react": "off",
+    "react/react-in-jsx-scope": "off",
+    "react/prop-types": "off",
+    "react/no-unescaped-entities": "error",
+    
+    // General JavaScript rules that won't conflict with existing code
+    "no-console": "warn",
+    "no-debugger": "error", 
+    "no-alert": "warn",
+    "no-var": "error",
+    "eqeqeq": ["error", "always"]
+  },
+  "env": {
+    "browser": true,
+    "es2022": true,
+    "node": true
+  },
+  "parserOptions": {
+    "ecmaVersion": "latest",
+    "sourceType": "module",
+    "ecmaFeatures": {
+      "jsx": true
+    }
+  },
+  "settings": {
+    "react": {
+      "version": "detect"
+    }
+  }
+}

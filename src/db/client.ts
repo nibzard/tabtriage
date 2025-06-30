@@ -1,17 +1,16 @@
 import { createClient } from '@libsql/client';
 import { drizzle } from 'drizzle-orm/libsql';
 import * as schema from './schema';
+import { getDatabaseConfig, getEnvironmentSummary, isDevelopment } from '@/lib/env';
 
-const isDevelopment = process.env.NODE_ENV === 'development';
+// Get validated database configuration
+const dbConfig = getDatabaseConfig();
 
-// Database configuration
-const config = {
-  url: process.env.TURSO_DATABASE_URL || 'file:local.db',
-  authToken: process.env.TURSO_AUTH_TOKEN,
-};
-
-// Create LibSQL client
-export const client = createClient(config);
+// Create LibSQL client with validated config
+export const client = createClient({
+  url: dbConfig.url,
+  authToken: dbConfig.authToken,
+});
 
 // Create Drizzle ORM instance
 export const db = drizzle(client, { schema });
@@ -23,8 +22,25 @@ export async function initializeDatabase() {
       // Test connection
       await client.execute('SELECT 1');
       console.log('✅ Database connection successful');
+      
+      // Log environment summary in development
+      const envSummary = getEnvironmentSummary();
+      console.log('📊 Environment Summary:', {
+        environment: envSummary.environment,
+        database: envSummary.database,
+        hasRequiredServices: {
+          auth: envSummary.auth.nextauth,
+          openai: envSummary.services.openai,
+          uploadthing: envSummary.services.uploadthing,
+        }
+      });
     } catch (error) {
       console.error('❌ Database connection failed:', error);
+      console.error('🔧 Check your environment configuration');
+      
+      const envSummary = getEnvironmentSummary();
+      console.error('📊 Current config:', envSummary.database);
+      
       throw error;
     }
   }

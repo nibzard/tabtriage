@@ -4,6 +4,7 @@ export interface Tab {
   url: string
   domain: string
   dateAdded: string
+  thumbnail?: string
   screenshot?: string
   fullScreenshot?: string
   summary: string
@@ -12,4 +13,6 @@ export interface Tab {
   status: 'unprocessed' | 'kept' | 'discarded'
   folderId?: string
   suggestedFolders: string[]
+  content?: string
+  contentExcerpt?: string
 }

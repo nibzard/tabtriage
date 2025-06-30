@@ -2,6 +2,8 @@ import { db, client } from '@/db/client';
 import { tabs } from '@/db/schema';
 import { eq, and, desc, sql as sqlTemplate } from 'drizzle-orm';
 import { logger } from '@/utils/logger';
+import { globalEmbeddingCache } from './embeddingCache';
+import { extractPageContent } from './contentExtractionService';
 
 /**
  * Jina Embeddings v3 API integration
@@ -31,19 +33,36 @@ interface EmbeddingResponse {
 }
 
 /**
- * Generate embeddings using Jina Embeddings v3 API
+ * Generate embeddings using Jina Embeddings v3 API with caching
  */
 async function generateEmbedding(
   text: string, 
   task: string = 'text-matching',
-  dimensions: number = 1024
+  dimensions: number = 1024,
+  useCache: boolean = true
 ): Promise<number[]> {
+  // Check cache first for queries (not for storage embeddings)
+  if (useCache && (task === 'retrieval.query' || task === 'text-matching')) {
+    const cached = globalEmbeddingCache.get(text, task);
+    if (cached) {
+      logger.debug(`Using cached ${cached.length}-dimensional embedding (task: ${task})`);
+      return cached;
+    }
+  }
+
   const apiKey = process.env.JINA_API_KEY;
   const apiUrl = process.env.JINA_API_URL || 'https://api.jina.ai/v1/embeddings';
   
   if (!apiKey) {
     logger.warn('JINA_API_KEY not found, falling back to mock embedding');
-    return generateMockEmbedding(text, dimensions);
+    const mockEmbedding = generateMockEmbedding(text, dimensions);
+    
+    // Cache mock embeddings too
+    if (useCache && (task === 'retrieval.query' || task === 'text-matching')) {
+      globalEmbeddingCache.set(text, task, mockEmbedding);
+    }
+    
+    return mockEmbedding;
   }
 
   try {
@@ -73,6 +92,12 @@ async function generateEmbedding(
     if (result.data && result.data.length > 0) {
       const embedding = result.data[0].embedding;
       logger.debug(`Generated ${embedding.length}-dimensional Jina v3 embedding (task: ${task})`);
+      
+      // Cache the embedding for query tasks
+      if (useCache && (task === 'retrieval.query' || task === 'text-matching')) {
+        globalEmbeddingCache.set(text, task, embedding);
+      }
+      
       return embedding;
     }
     
@@ -80,7 +105,14 @@ async function generateEmbedding(
   } catch (error) {
     logger.error('Error calling Jina API:', error);
     logger.warn('Falling back to mock embedding');
-    return generateMockEmbedding(text, dimensions);
+    const mockEmbedding = generateMockEmbedding(text, dimensions);
+    
+    // Cache mock embeddings too
+    if (useCache && (task === 'retrieval.query' || task === 'text-matching')) {
+      globalEmbeddingCache.set(text, task, mockEmbedding);
+    }
+    
+    return mockEmbedding;
   }
 }
 
@@ -105,32 +137,139 @@ function generateMockEmbedding(text: string, dimensions: number = 1024): number[
 }
 
 /**
- * Convert a number array to Turso vector format
+ * Convert a number array to Turso F32_BLOB format
+ * For F32_BLOB(1024), we need to pass the raw float32 array
  */
-function arrayToVector(arr: number[]): string {
-  return `vector32('[${arr.join(', ')}]')`;
+function arrayToF32Blob(arr: number[]): Float32Array {
+  return new Float32Array(arr);
 }
 
 /**
- * Update tab with Jina v3 embedding
+ * Generate embedding text from tab title, summary, and page content
+ */
+function generateEmbeddingText(title: string, summary: string, pageContent?: string, url?: string): string {
+  const parts = [];
+  
+  // Add title if available
+  if (title && title.trim()) {
+    parts.push(title.trim());
+  }
+  
+  // Add summary if available
+  if (summary && summary.trim()) {
+    parts.push(summary.trim());
+  }
+  
+  // Add page content if available
+  if (pageContent && pageContent.trim()) {
+    parts.push(pageContent.trim());
+  }
+  
+  // If we have no meaningful content yet, extract info from URL
+  if (parts.length === 0 && url) {
+    const urlInfo = extractInfoFromUrl(url);
+    if (urlInfo) {
+      parts.push(urlInfo);
+    }
+  }
+  
+  return parts.join(' ').trim();
+}
+
+/**
+ * Extract meaningful information from a URL for embedding when no other content is available
+ */
+function extractInfoFromUrl(url: string): string {
+  if (!url) return '';
+  
+  try {
+    const urlObj = new URL(url);
+    const domain = urlObj.hostname.replace('www.', '');
+    const path = urlObj.pathname;
+    
+    // Create descriptive text from domain and path
+    const parts = [];
+    
+    // Add domain information
+    if (domain) {
+      // Convert domain to readable format (e.g., "github.com" -> "GitHub website")
+      const domainWords = domain.split('.')[0];
+      const readableDomain = domainWords.charAt(0).toUpperCase() + domainWords.slice(1);
+      parts.push(`${readableDomain} website`);
+    }
+    
+    // Add path information if meaningful
+    if (path && path !== '/' && path.length > 1) {
+      // Convert path to readable format (e.g., "/docs/api" -> "documentation API page")
+      const pathParts = path.split('/').filter(part => part.length > 0);
+      const readablePath = pathParts
+        .map(part => part.replace(/[-_]/g, ' '))
+        .join(' ')
+        .toLowerCase();
+      
+      if (readablePath && readablePath.length > 2) {
+        parts.push(`${readablePath} page`);
+      }
+    }
+    
+    return parts.join(' ');
+  } catch (error) {
+    // If URL parsing fails, just return the domain if possible
+    const match = url.match(/(?:https?:\/\/)?(?:www\.)?([^\/]+)/);
+    return match ? `${match[1]} website` : '';
+  }
+}
+
+/**
+ * Generate a content excerpt for search results
+ */
+function generateContentExcerpt(content: string, query: string, maxLength: number = 200): string {
+  if (!content || content.length <= maxLength) {
+    return content || '';
+  }
+  
+  // Try to find the query term in the content for context
+  const lowerContent = content.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  const queryIndex = lowerContent.indexOf(lowerQuery);
+  
+  if (queryIndex !== -1) {
+    // Found the query, extract around it
+    const start = Math.max(0, queryIndex - 50);
+    const end = Math.min(content.length, queryIndex + query.length + 150);
+    let excerpt = content.substring(start, end);
+    
+    // Add ellipsis if we truncated
+    if (start > 0) excerpt = '...' + excerpt;
+    if (end < content.length) excerpt = excerpt + '...';
+    
+    return excerpt;
+  } else {
+    // Query not found, just take the beginning
+    return content.substring(0, maxLength) + (content.length > maxLength ? '...' : '');
+  }
+}
+
+/**
+ * Update tab with Jina v3 embedding, optionally including page content
  */
 export async function updateTabEmbedding(
   tabId: string, 
   text: string,
-  task: string = 'text-matching'
+  task: string = 'retrieval.passage'
 ): Promise<void> {
   try {
     // Generate embedding from text using Jina v3
     const embedding = await generateEmbedding(text, task);
-    const vectorStr = arrayToVector(embedding);
+    const embeddingBlob = arrayToF32Blob(embedding);
     
-    // Update the tab with the embedding using raw SQL
+    // Update the tab with the embedding using parameterized query
     await client.execute({
-      sql: `UPDATE tabs SET embedding_vector = ${vectorStr} WHERE id = ?`,
-      args: [tabId]
+      sql: `UPDATE tabs SET embedding = ? WHERE id = ?`,
+      args: [embeddingBlob, tabId]
     });
     
-    logger.info(`Updated Jina v3 embedding for tab ${tabId} (task: ${task})`);
+    logger.info(`Updated Jina v3 embedding for tab ${tabId} (task: ${task}, dims: ${embedding.length})`);
   } catch (error) {
     logger.error(`Error updating Jina v3 embedding for tab ${tabId}:`, error);
     throw error;
@@ -138,7 +277,76 @@ export async function updateTabEmbedding(
 }
 
 /**
- * Search tabs using Jina v3 vector similarity
+ * Update tab with both embedding and content text
+ */
+export async function updateTabEmbeddingWithContentStorage(
+  tabId: string, 
+  text: string,
+  task: string = 'retrieval.passage'
+): Promise<void> {
+  try {
+    // Generate embedding from text using Jina v3
+    const embedding = await generateEmbedding(text, task);
+    const embeddingBlob = arrayToF32Blob(embedding);
+    
+    // Update the tab with both embedding and content text
+    await client.execute({
+      sql: `UPDATE tabs SET embedding = ?, content = ? WHERE id = ?`,
+      args: [embeddingBlob, text, tabId]
+    });
+    
+    logger.info(`Updated Jina v3 embedding and content for tab ${tabId} (task: ${task}, dims: ${embedding.length}, content: ${text.length} chars)`);
+  } catch (error) {
+    logger.error(`Error updating Jina v3 embedding and content for tab ${tabId}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Update tab with enhanced embedding including page content
+ */
+export async function updateTabEmbeddingWithContent(
+  tabId: string,
+  title: string,
+  summary: string,
+  url?: string,
+  task: string = 'retrieval.passage'
+): Promise<void> {
+  try {
+    let pageContent: string | undefined;
+    
+    // Try to extract page content if URL is provided
+    if (url) {
+      logger.debug(`Extracting page content for tab ${tabId} from ${url}`);
+      const extracted = await extractPageContent(url);
+      if (extracted) {
+        pageContent = extracted.content;
+        logger.debug(`Extracted ${pageContent.length} characters of page content for tab ${tabId}`);
+      } else {
+        logger.warn(`Failed to extract page content for tab ${tabId} from ${url}`);
+      }
+    }
+    
+    // Generate embedding text combining title, summary, and page content
+    const embeddingText = generateEmbeddingText(title, summary, pageContent, url);
+    
+    if (!embeddingText) {
+      logger.warn(`No content available for embedding tab ${tabId}`);
+      return;
+    }
+    
+    // Update the embedding and store the content text
+    await updateTabEmbeddingWithContentStorage(tabId, embeddingText, task);
+    
+    logger.info(`Updated enhanced embedding for tab ${tabId} (${embeddingText.length} chars${pageContent ? ' with page content' : ' without page content'})`);
+  } catch (error) {
+    logger.error(`Error updating enhanced embedding for tab ${tabId}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Search tabs using Jina v3 vector similarity with relevance filtering
  */
 export async function searchTabsByVector(
   query: string,
@@ -149,60 +357,72 @@ export async function searchTabsByVector(
   try {
     // Generate embedding for the query using retrieval.query task
     const queryEmbedding = await generateEmbedding(query, task);
-    const queryVector = arrayToVector(queryEmbedding);
+    const queryVector = arrayToF32Blob(queryEmbedding);
     
-    // Use vector similarity search with cosine distance
+    // Use vector similarity search with cosine distance and relevance threshold
     const result = await client.execute({
       sql: `
         SELECT 
           t.id, t.title, t.url, t.domain, t.date_added, 
           t.summary, t.category, t.screenshot_url, t.status,
-          t.folder_id,
-          vector_distance_cos(t.embedding_vector, ${queryVector}) as distance
+          t.folder_id, t.content,
+          vector_distance_cos(t.embedding, ?) as distance
         FROM tabs t
         WHERE t.user_id = ? 
           AND t.status != 'discarded' 
-          AND t.embedding_vector IS NOT NULL
+          AND t.embedding IS NOT NULL
+          AND vector_distance_cos(t.embedding, ?) <= 0.7
         ORDER BY distance ASC
         LIMIT ?
       `,
-      args: [userId, limit]
+      args: [queryVector, userId, queryVector, limit]
     });
     
+    logger.debug(`Vector search found ${result.rows.length} results for query: "${query}" (filtered by relevance threshold 0.7)`);
     return result.rows as any[];
   } catch (error) {
     logger.error('Error in Jina v3 vector search:', error);
-    // Fall back to empty results if vector search fails
+    // Return empty results if vector search fails
     return [];
   }
 }
 
 /**
- * Hybrid search combining Jina v3 vector similarity and text search
+ * Analyze query to determine optimal search strategy
  */
-export async function hybridSearch(
+export function analyzeQuery(query: string): {
+  useVector: boolean;
+  useText: boolean;
+  isURL: boolean;
+  isShort: boolean;
+  confidence: 'high' | 'medium' | 'low';
+} {
+  const trimmed = query.trim();
+  const isURL = /^https?:\/\//.test(trimmed);
+  const isShort = trimmed.length < 3;
+  const hasLetters = /[a-zA-Z]/.test(trimmed);
+  const hasNumbers = /[0-9]/.test(trimmed);
+  const isAlphanumeric = /^[a-zA-Z0-9\s\-_.]+$/.test(trimmed);
+  
+  return {
+    useVector: !isShort && !isURL && hasLetters,
+    useText: hasLetters || hasNumbers,
+    isURL,
+    isShort,
+    confidence: isShort ? 'low' : (isAlphanumeric && hasLetters ? 'high' : 'medium')
+  };
+}
+
+/**
+ * Execute text search using FTS5 with BM25 scoring
+ */
+export async function searchTabsByText(
   query: string,
   userId: string,
-  options: {
-    limit?: number;
-    vectorWeight?: number;
-    textWeight?: number;
-    vectorTask?: string;
-  } = {}
+  limit: number = 20
 ): Promise<any[]> {
-  const { 
-    limit = 20, 
-    vectorWeight = 0.7, 
-    textWeight = 0.3,
-    vectorTask = 'retrieval.query'
-  } = options;
-  
   try {
-    // Get vector search results using Jina v3
-    const vectorResults = await searchTabsByVector(query, userId, limit * 2, vectorTask);
-    
-    // Get text search results using FTS5
-    const textResults = await client.execute({
+    const result = await client.execute({
       sql: `
         SELECT t.*, bm25(tabs_fts) as bm25_score
         FROM tabs_fts 
@@ -213,50 +433,22 @@ export async function hybridSearch(
         ORDER BY bm25_score
         LIMIT ?
       `,
-      args: [query, userId, limit * 2]
+      args: [query, userId, limit]
     });
     
-    // Combine and rank results
-    const combinedResults = new Map<string, any>();
-    
-    // Add vector results with scores
-    vectorResults.forEach((result, index) => {
-      // Convert distance to similarity score (lower distance = higher similarity)
-      const similarityScore = 1 / (1 + (result.distance || 0));
-      const score = vectorWeight * similarityScore;
-      combinedResults.set(result.id, { ...result, score, vectorRank: index + 1 });
-    });
-    
-    // Add or update with text results
-    (textResults.rows as any[]).forEach((result, index) => {
-      // BM25 score (higher is better)
-      const textScore = textWeight * Math.max(0, result.bm25_score || 0);
-      if (combinedResults.has(result.id)) {
-        const existing = combinedResults.get(result.id);
-        existing.score += textScore;
-        existing.textRank = index + 1;
-        existing.bm25Score = result.bm25_score;
-      } else {
-        combinedResults.set(result.id, { 
-          ...result, 
-          score: textScore, 
-          textRank: index + 1,
-          bm25Score: result.bm25_score
-        });
-      }
-    });
-    
-    // Sort by combined score and return top results
-    const finalResults = Array.from(combinedResults.values())
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit);
-    
-    logger.info(`Hybrid search returned ${finalResults.length} results (vector: ${vectorResults.length}, text: ${textResults.rows.length})`);
-    return finalResults;
+    logger.debug(`Text search found ${result.rows.length} results for query: "${query}"`);
+    return result.rows as any[];
   } catch (error) {
-    logger.error('Error in Jina v3 hybrid search:', error);
-    
-    // Fall back to simple text search
+    logger.error('Error in text search:', error);
+    return [];
+  }
+}
+
+/**
+ * Fallback search using simple text matching
+ */
+export async function getFallbackResults(query: string, userId: string, limit: number): Promise<any[]> {
+  try {
     const fallbackResults = await db
       .select()
       .from(tabs)
@@ -264,30 +456,38 @@ export async function hybridSearch(
         eq(tabs.userId, userId),
         sqlTemplate`${tabs.status} != 'discarded'`
       ))
-      .limit(limit);
+      .limit(limit * 2); // Get more results for filtering
     
-    return fallbackResults.filter(tab => {
-      const searchText = query.toLowerCase();
+    const searchText = query.toLowerCase();
+    const filtered = fallbackResults.filter(tab => {
       return (
         tab.title?.toLowerCase().includes(searchText) ||
         tab.summary?.toLowerCase().includes(searchText) ||
-        tab.url?.toLowerCase().includes(searchText)
+        tab.url?.toLowerCase().includes(searchText) ||
+        tab.domain?.toLowerCase().includes(searchText)
       );
-    });
+    }).slice(0, limit);
+    
+    logger.info(`Fallback search returned ${filtered.length} results`);
+    return filtered;
+  } catch (error) {
+    logger.error('Error in fallback search:', error);
+    return [];
   }
 }
 
 /**
- * Batch update embeddings for tabs without embeddings using Jina v3
+ * Batch update embeddings for tabs without embeddings using enhanced Jina v3 with page content
  */
 export async function updateMissingEmbeddings(
   userId: string,
-  batchSize: number = 20
+  batchSize: number = 20,
+  includePageContent: boolean = true
 ): Promise<number> {
   try {
     // Find tabs without embeddings using raw SQL
     const result = await client.execute({
-      sql: `SELECT * FROM tabs WHERE user_id = ? AND embedding_vector IS NULL LIMIT ?`,
+      sql: `SELECT * FROM tabs WHERE user_id = ? AND embedding IS NULL LIMIT ?`,
       args: [userId, batchSize]
     });
     
@@ -297,24 +497,36 @@ export async function updateMissingEmbeddings(
     
     for (const tab of tabsWithoutEmbeddings) {
       try {
-        const text = `${tab.title} ${tab.summary || ''}`.trim();
-        if (text) {
-          // Use 'retrieval.passage' task for stored content
-          await updateTabEmbedding(tab.id, text, 'retrieval.passage');
+        const title = tab.title || '';
+        const summary = tab.summary || '';
+        const url = tab.url || '';
+        
+        if (title || summary || url) {
+          if (includePageContent && url) {
+            // Use enhanced embedding with page content
+            await updateTabEmbeddingWithContent(tab.id, title, summary, url, 'retrieval.passage');
+          } else {
+            // Fallback to title + summary only
+            const text = generateEmbeddingText(title, summary, undefined, url);
+            if (text) {
+              await updateTabEmbeddingWithContentStorage(tab.id, text, 'retrieval.passage');
+            }
+          }
           updatedCount++;
           
-          // Add delay to respect API rate limits
-          await new Promise(resolve => setTimeout(resolve, 100));
+          // Add delay to respect API rate limits (both Reader and Embeddings APIs)
+          await new Promise(resolve => setTimeout(resolve, includePageContent ? 300 : 100));
         }
       } catch (error) {
-        logger.error(`Failed to update Jina v3 embedding for tab ${tab.id}:`, error);
+        logger.error(`Failed to update enhanced embedding for tab ${tab.id}:`, error);
+        // Continue with other tabs even if one fails
       }
     }
     
-    logger.info(`Updated Jina v3 embeddings for ${updatedCount} tabs`);
+    logger.info(`Updated enhanced Jina v3 embeddings for ${updatedCount} tabs${includePageContent ? ' with page content extraction' : ''}`);
     return updatedCount;
   } catch (error) {
-    logger.error('Error updating missing Jina v3 embeddings:', error);
+    logger.error('Error updating missing enhanced embeddings:', error);
     throw error;
   }
 }
@@ -335,7 +547,7 @@ export async function getEmbeddingStats(userId: string): Promise<{
     });
     
     const withEmbeddingsResult = await client.execute({
-      sql: `SELECT COUNT(*) as count FROM tabs WHERE user_id = ? AND embedding_vector IS NOT NULL`,
+      sql: `SELECT COUNT(*) as count FROM tabs WHERE user_id = ? AND embedding IS NOT NULL`,
       args: [userId]
     });
     

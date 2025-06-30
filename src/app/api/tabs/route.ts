@@ -1,15 +1,16 @@
 import { NextResponse } from 'next/server';
-import { db, generateId } from '@/db/client';
+import { db, client, generateId } from '@/db/client';
 import { tabs, folders, tags, tabTags, suggestedFolders } from '@/db/schema';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { logger } from '@/utils/logger';
-import { updateTabEmbedding } from '@/services/jinaEmbeddingService';
+import { updateTabEmbedding, updateTabEmbeddingWithContent } from '@/services/jinaEmbeddingService';
 import { ensureUserExists } from '@/utils/ensure-user';
 import { captureScreenshots } from '@/services/screenshotService';
+import { getCurrentUserId as getUser } from '@/utils/get-current-user';
 
 // Simple session management (replace with proper auth later)
-async function getCurrentUserId(): Promise<string> {
-  const userId = 'user_001';
+async function getCurrentUserId(request?: Request): Promise<string> {
+  const userId = getUser(request);
   await ensureUserExists(userId);
   return userId;
 }
@@ -17,16 +18,19 @@ async function getCurrentUserId(): Promise<string> {
 /**
  * GET /api/tabs - Get all tabs for the current user
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const userId = await getCurrentUserId();
+    const userId = await getCurrentUserId(request);
+    logger.info(`GET tabs for user: ${userId}`);
     
-    // Get all tabs for the user
-    const userTabs = await db
-      .select()
-      .from(tabs)
-      .where(eq(tabs.userId, userId))
-      .orderBy(desc(tabs.dateAdded));
+    // Get all tabs for the user using raw SQL to avoid Drizzle schema issues
+    const userTabsResult = await client.execute({
+      sql: `SELECT * FROM tabs WHERE user_id = ? ORDER BY date_added DESC`,
+      args: [userId]
+    });
+    
+    const userTabs = userTabsResult.rows as any[];
+    logger.info(`Found ${userTabs.length} tabs in database`);
     
     if (userTabs.length === 0) {
       return NextResponse.json([]);
@@ -34,48 +38,27 @@ export async function GET() {
     
     const tabIds = userTabs.map(tab => tab.id);
     
-    // Get all tab tags
-    const tabTagsData = await db
-      .select({
-        tabId: tabTags.tabId,
-        tagName: tags.name
-      })
-      .from(tabTags)
-      .innerJoin(tags, eq(tabTags.tagId, tags.id))
-      .where(inArray(tabTags.tabId, tabIds));
-    
-    // Get suggested folders
-    const suggestedFoldersData = await db
-      .select()
-      .from(suggestedFolders)
-      .where(inArray(suggestedFolders.tabId, tabIds));
-    
-    // Transform to match frontend Tab interface
+    // For now, return simplified structure to test basic functionality
     const transformedTabs = userTabs.map(tab => {
-      const tabTagsList = tabTagsData
-        .filter(tt => tt.tabId === tab.id)
-        .map(tt => tt.tagName);
-      
-      const suggestedFoldersList = suggestedFoldersData
-        .filter(sf => sf.tabId === tab.id)
-        .map(sf => sf.folderId);
-      
       return {
         id: tab.id,
         title: tab.title,
         url: tab.url,
         domain: tab.domain || '',
-        dateAdded: tab.dateAdded || new Date().toISOString(),
+        dateAdded: tab.date_added || new Date().toISOString(),
         summary: tab.summary || '',
         category: tab.category || 'uncategorized',
-        screenshot: tab.screenshotUrl,
-        fullScreenshot: tab.fullScreenshotUrl || undefined,
+        thumbnail: tab.thumbnail_url,
+        screenshot: tab.screenshot_url,
+        fullScreenshot: tab.full_screenshot_url || undefined,
         status: tab.status || 'unprocessed',
-        tags: tabTagsList,
-        folderId: tab.folderId,
-        suggestedFolders: suggestedFoldersList
+        tags: [], // Simplified for now
+        folderId: tab.folder_id,
+        suggestedFolders: [] // Simplified for now
       };
     });
+    
+    logger.info(`Retrieved ${transformedTabs.length} tabs for user ${userId}`);
     
     return NextResponse.json(transformedTabs);
   } catch (error) {
@@ -89,7 +72,7 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   try {
-    const userId = await getCurrentUserId();
+    const userId = await getCurrentUserId(request);
     const tabData = await request.json();
     
     // Ensure tab has an ID
@@ -133,29 +116,35 @@ export async function POST(request: Request) {
         }
       });
 
-    // Generate embedding in background (don't wait for it)
-    if (tabRecord.title || tabRecord.summary) {
-      const embeddingText = `${tabRecord.title} ${tabRecord.summary || ''}`.trim();
-      updateTabEmbedding(tabId, embeddingText, 'retrieval.passage').catch(error => {
-        logger.warn(`Failed to generate Jina embedding for tab ${tabId}:`, error);
+    // Generate enhanced embedding with page content in background (don't wait for it)
+    if (tabRecord.title || tabRecord.summary || tabRecord.url) {
+      updateTabEmbeddingWithContent(
+        tabId, 
+        tabRecord.title || '', 
+        tabRecord.summary || '', 
+        tabRecord.url || '',
+        'retrieval.passage'
+      ).catch(error => {
+        logger.warn(`Failed to generate enhanced Jina embedding for tab ${tabId}:`, error);
       });
     }
 
     // Generate screenshots in background if not already provided
     if (!tabRecord.screenshotUrl && tabRecord.url) {
-      captureScreenshots(tabRecord.url).then(async ({ thumbnail, fullHeight }) => {
-        if (thumbnail || fullHeight) {
+      captureScreenshots(tabRecord.url).then(async ({ thumbnail, preview, fullHeight }) => {
+        if (thumbnail || preview || fullHeight) {
           // Update the tab record with the screenshot URLs
           await db
             .update(tabs)
             .set({ 
-              screenshotUrl: thumbnail,
+              thumbnailUrl: thumbnail,
+              screenshotUrl: preview,
               fullScreenshotUrl: fullHeight,
               updatedAt: new Date().toISOString()
             })
             .where(eq(tabs.id, tabId));
           
-          logger.info(`Screenshots generated and saved for tab ${tabId}: thumbnail=${thumbnail}, full=${fullHeight}`);
+          logger.info(`Screenshots generated and saved for tab ${tabId}: thumbnail=${thumbnail}, preview=${preview}, full=${fullHeight}`);
         }
       }).catch(error => {
         logger.warn(`Failed to generate screenshots for tab ${tabId}:`, error);

@@ -153,7 +153,7 @@ export function SearchFilterPanel({
           {searchTerm && (
             <div className="mb-4 p-3 bg-muted/50 rounded-md">
               <p className="text-sm text-muted-foreground">
-                Filtering results for: <span className="font-medium">"{searchTerm}"</span>
+                Filtering results for: <span className="font-medium">&quot;{searchTerm}&quot;</span>
               </p>
             </div>
           )}

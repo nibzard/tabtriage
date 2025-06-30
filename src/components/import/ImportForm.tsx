@@ -340,8 +340,8 @@ export function ImportForm({ onImportStart, onUpdateProgress }: ImportFormProps)
               <ol className="list-decimal list-inside ml-2 mt-1 space-y-1">
                 <li>Open Safari</li>
                 <li>Tap the tabs icon in the bottom right</li>
-                <li>Long press on "X Tabs" at the bottom</li>
-                <li>Select "Copy X Links"</li>
+                <li>Long press on &quot;X Tabs&quot; at the bottom</li>
+                <li>Select &quot;Copy X Links&quot;</li>
                 <li>Paste above</li>
               </ol>
             </div>
@@ -352,7 +352,7 @@ export function ImportForm({ onImportStart, onUpdateProgress }: ImportFormProps)
                 <li>Open Safari</li>
                 <li>View &gt; Show Tab Overview</li>
                 <li>Select tabs (Cmd+click for multiple)</li>
-                <li>Right-click and choose "Copy Links"</li>
+                <li>Right-click and choose &quot;Copy Links&quot;</li>
                 <li>Paste above</li>
               </ol>
             </div>

@@ -1,55 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { sqliteTable, text, integer, primaryKey } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, primaryKey, real } from 'drizzle-orm/sqlite-core';
 
+// Simplified users table matching our actual schema
 export const users = sqliteTable("users", {
   id: text("id").notNull().primaryKey(),
-  name: text("name"),
-  email: text("email").notNull(),
-  emailVerified: integer("emailVerified", { mode: "timestamp_ms" }),
-  image: text("image"),
+  email: text("email").notNull().unique(),
+  displayName: text("display_name"),
+  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").default(sql`CURRENT_TIMESTAMP`),
 })
-
-export const accounts = sqliteTable(
-  "accounts",
-  {
-    userId: text("userId")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    type: text("type").notNull(),
-    provider: text("provider").notNull(),
-    providerAccountId: text("providerAccountId").notNull(),
-    refresh_token: text("refresh_token"),
-    access_token: text("access_token"),
-    expires_at: integer("expires_at"),
-    token_type: text("token_type"),
-    scope: text("scope"),
-    id_token: text("id_token"),
-    session_state: text("session_state"),
-  },
-  (account) => ({
-    compoundKey: primaryKey({ columns: [account.provider, account.providerAccountId] }),
-  })
-)
-
-export const sessions = sqliteTable("sessions", {
-  sessionToken: text("sessionToken").notNull().primaryKey(),
-  userId: text("userId")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  expires: integer("expires", { mode: "timestamp_ms" }).notNull(),
-})
-
-export const verificationTokens = sqliteTable(
-  "verificationTokens",
-  {
-    identifier: text("identifier").notNull(),
-    token: text("token").notNull(),
-    expires: integer("expires", { mode: "timestamp_ms" }).notNull(),
-  },
-  (vt) => ({
-    compoundKey: primaryKey({ columns: [vt.identifier, vt.token] }),
-  })
-)
 
 // Folders table
 export const folders = sqliteTable('folders', {
@@ -62,7 +21,7 @@ export const folders = sqliteTable('folders', {
   updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`),
 });
 
-// Tabs table
+// Tabs table with proper F32_BLOB embedding type
 export const tabs = sqliteTable('tabs', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
@@ -73,10 +32,14 @@ export const tabs = sqliteTable('tabs', {
   dateAdded: text('date_added').default(sql`CURRENT_TIMESTAMP`),
   summary: text('summary'),
   category: text('category').default('uncategorized'),
+  thumbnailUrl: text('thumbnail_url'),
   screenshotUrl: text('screenshot_url'),
   fullScreenshotUrl: text('full_screenshot_url'),
   status: text('status', { enum: ['unprocessed', 'kept', 'discarded'] }).default('unprocessed'),
-  embedding: text('embedding_vector'), // F32_BLOB(1024) - 1024-dimensional vector for Jina v3
+  // Note: F32_BLOB(1024) type is handled at SQL level, Drizzle sees it as text
+  embedding: text('embedding'), 
+  // Store the extracted page content used for embedding generation
+  content: text('content'),
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`),
 });
@@ -94,16 +57,17 @@ export const tabTags = sqliteTable('tab_tags', {
   tabId: text('tab_id').notNull().references(() => tabs.id, { onDelete: 'cascade' }),
   tagId: text('tag_id').notNull().references(() => tags.id, { onDelete: 'cascade' }),
 }, (table) => ({
-  pk: sql`PRIMARY KEY (${table.tabId}, ${table.tagId})`,
+  pk: primaryKey({ columns: [table.tabId, table.tagId] }),
 }));
 
-// Suggested folders table
+// Suggested folders table - updated to match migration
 export const suggestedFolders = sqliteTable('suggested_folders', {
+  id: text('id').primaryKey(),
   tabId: text('tab_id').notNull().references(() => tabs.id, { onDelete: 'cascade' }),
   folderId: text('folder_id').notNull().references(() => folders.id, { onDelete: 'cascade' }),
-}, (table) => ({
-  pk: sql`PRIMARY KEY (${table.tabId}, ${table.folderId})`,
-}));
+  confidence: real('confidence').notNull().default(0.0),
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+});
 
 // Type exports for TypeScript
 export type User = typeof users.$inferSelect;

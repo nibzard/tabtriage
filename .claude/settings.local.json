@@ -16,7 +16,19 @@
       "Bash(sqlite3:*)",
       "Bash(rg:*)",
       "Bash(npx tsx:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(pnpm exec:*)",
+      "mcp__playwright__browser_wait_for",
+      "Bash(pnpm lint:errors:*)",
+      "Bash(tsx:*)",
+      "Bash(pnpm build:*)",
+      "Bash(node:*)",
+      "Bash(TURSO_DATABASE_URL=\"libsql://tabtriage-nibzard.aws-eu-west-1.turso.io\" TURSO_AUTH_TOKEN=\"eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJnaWQiOiI5M2I0MjY4NS1lYWFhLTQ0ZGQtYTU2NC03YjNjZWM4NWJhZGIiLCJpYXQiOjE3NTA3OTQ2MzIsInJpZCI6IjhlM2MzYWJhLWU5YzgtNDAyZC1hNjRkLTY1Yjc1OTIyMmQ4MCJ9.7UoJhFeV-801lJR8PkTRDuA-UhUPo78P56CzJEr6z2uelRhZnYbBYCW3_n28YyXxZ6rtGlZL8RkzR1DS32RmBQ\" node -e \"\nconst { createClient } = require('@libsql/client');\nconst client = createClient({\n  url: process.env.TURSO_DATABASE_URL,\n  authToken: process.env.TURSO_AUTH_TOKEN,\n});\nclient.execute('PRAGMA table_info(tabs)').then(result => {\n  console.log('Updated Turso tabs table structure:');\n  result.rows.forEach(row => {\n    console.log(\\`- \\${row.name} (\\${row.type})\\`);\n  });\n  \n  // Now check the actual thumbnail_url values\n  return client.execute('SELECT user_id, title, thumbnail_url FROM tabs WHERE user_id = \\\"user_001\\\" LIMIT 5');\n}).then(result => {\n  console.log('\\\\nTurso database content for user_001:');\n  console.log('Total rows:', result.rows.length);\n  result.rows.forEach(row => {\n    console.log(\\`- User: \\${row.user_id}, Title: \\${row.title}, thumbnail_url: '\\${row.thumbnail_url}'\\`);\n  });\n  client.close();\n});\n\")",
+      "Bash(TURSO_DATABASE_URL=\"libsql://tabtriage-nibzard.aws-eu-west-1.turso.io\" TURSO_AUTH_TOKEN=\"eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJnaWQiOiI5M2I0MjY4NS1lYWFhLTQ0ZGQtYTU2NC03YjNjZWM4NWJhZGIiLCJpYXQiOjE3NTA3OTQ2MzIsInJpZCI6IjhlM2MzYWJhLWU5YzgtNDAyZC1hNjRkLTY1Yjc1OTIyMmQ4MCJ9.7UoJhFeV-801lJR8PkTRDuA-UhUPo78P56CzJEr6z2uelRhZnYbBYCW3_n28YyXxZ6rtGlZL8RkzR1DS32RmBQ\" node -e \"\nconst { createClient } = require('@libsql/client');\nconst client = createClient({\n  url: process.env.TURSO_DATABASE_URL,\n  authToken: process.env.TURSO_AUTH_TOKEN,\n});\nclient.execute('ALTER TABLE tabs ADD COLUMN thumbnail_url TEXT').then(result => {\n  console.log('Successfully added thumbnail_url column');\n  return client.execute('PRAGMA table_info(tabs)');\n}).then(result => {\n  console.log('Updated table structure:');\n  result.rows.forEach(row => {\n    console.log(\\`- \\${row.name} (\\${row.type})\\`);\n  });\n  client.close();\n}).catch(error => {\n  console.log('Error or column already exists:', error.message);\n  client.close();\n});\n\")",
+      "Bash(TURSO_DATABASE_URL=\"libsql://tabtriage-nibzard.aws-eu-west-1.turso.io\" TURSO_AUTH_TOKEN=\"eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJnaWQiOiI5M2I0MjY4NS1lYWFhLTQ0ZGQtYTU2NC03YjNjZWM4NWJhZGIiLCJpYXQiOjE3NTA3OTQ2MzIsInJpZCI6IjhlM2MzYWJhLWU5YzgtNDAyZC1hNjRkLTY1Yjc1OTIyMmQ4MCJ9.7UoJhFeV-801lJR8PkTRDuA-UhUPo78P56CzJEr6z2uelRhZnYbBYCW3_n28YyXxZ6rtGlZL8RkzR1DS32RmBQ\" node -e \"\nconst { createClient } = require('@libsql/client');\nconst client = createClient({\n  url: process.env.TURSO_DATABASE_URL,\n  authToken: process.env.TURSO_AUTH_TOKEN,\n});\nclient.execute('SELECT COUNT(*) as total FROM tabs WHERE user_id = \\\"user_001\\\"').then(result => {\n  console.log('Total tabs for user_001:', result.rows[0].total);\n  return client.execute('SELECT user_id, title, thumbnail_url FROM tabs WHERE user_id = \\\"user_001\\\" LIMIT 5');\n}).then(result => {\n  console.log('\\\\nTurso database content for user_001:');\n  result.rows.forEach(row => {\n    console.log(\\`- User: \\${row.user_id}, Title: \\${row.title}, thumbnail_url: '\\${row.thumbnail_url}'\\`);\n  });\n  client.close();\n});\n\")",
+      "Bash(curl:*)",
+      "Bash(npx tsc:*)",
+      "Bash(pnpm add:*)"
     ],
     "deny": []
   }

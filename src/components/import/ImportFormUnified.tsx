@@ -20,6 +20,22 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
 import { useTabs } from '@/hooks/useTabs'
 import { parseTabsFromText, parseTabsFromFile } from '@/services/tabService'
 import { useResponsive } from '@/hooks/useUI'
@@ -37,6 +53,11 @@ export function ImportFormUnified({ onImportComplete }: ImportFormUnifiedProps) 
   const [showHelp, setShowHelp] = useState(false)
   const [progress, setProgress] = useState(0)
   const [processingMessage, setProcessingMessage] = useState('')
+  const [duplicates, setDuplicates] = useState<any[]>([])
+  const [showDuplicatesDialog, setShowDuplicatesDialog] = useState(false)
+  const [duplicateResolution, setDuplicateResolution] = useState<any>({})
+  const [selectedDuplicates, setSelectedDuplicates] = useState<string[]>([])
+  const [tabsToImport, setTabsToImport] = useState<any[]>([])
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { addTabs } = useTabs()
@@ -119,77 +140,257 @@ export function ImportFormUnified({ onImportComplete }: ImportFormUnifiedProps) 
     }
   }
 
-  const handleImport = async () => {
-    if (!textInput.trim() && !file) {
-      toast.error('Please paste URLs or select a file')
-      return
+  const handleDuplicateResolution = async (action: 'skip' | 'overwrite' | 'new') => {
+    setShowDuplicatesDialog(false);
+
+    const tabsToProcess = [...tabsToImport];
+
+    const finalTabs = tabsToProcess.filter(tab => {
+      const duplicate = duplicates.find(d => d.url === tab.url);
+      if (duplicate) {
+        const resolution = duplicateResolution[duplicate.id] || action;
+        return resolution === 'new';
+      }
+      return true;
+    });
+
+    const tabsToOverwrite = tabsToProcess.filter(tab => {
+      const duplicate = duplicates.find(d => d.url === tab.url);
+      if (duplicate) {
+        const resolution = duplicateResolution[duplicate.id] || action;
+        return resolution === 'overwrite';
+      }
+      return false;
+    });
+
+    if (finalTabs.length > 0) {
+      await importTabs(finalTabs);
     }
 
-    setIsProcessing(true)
-    setProgress(0)
-    setProcessingMessage('Parsing URLs...')
+    if (tabsToOverwrite.length > 0) {
+      const existingTabsToOverwrite = duplicates.filter(d =>
+        tabsToOverwrite.some(t => t.url === d.url)
+      );
+      const updatedTabs = existingTabsToOverwrite.map(existingTab => {
+        const newTab = tabsToOverwrite.find(t => t.url === existingTab.url);
+        return { ...existingTab, ...newTab };
+      });
+      await importTabs(updatedTabs);
+    }
+
+    setDuplicates([]);
+    setDuplicateResolution({});
+    setSelectedDuplicates([]);
+    setTabsToImport([]);
+    setTextInput('');
+    setFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    onImportComplete?.();
+  };
+
+  const importTabs = async (tabs: any[]) => {
+    setIsProcessing(true);
+    setProcessingMessage(`Processing ${tabs.length} tabs...`);
+    setProgress(0);
 
     try {
-      let tabs: any[] = []
-      
-      if (textInput.trim()) {
-        tabs = await parseTabsFromText(textInput)
-      } else if (file) {
-        tabs = await parseTabsFromFile(file)
-      }
-
-      if (tabs.length === 0) {
-        toast.error('No valid URLs found')
-        setIsProcessing(false)
-        return
-      }
-
-      setProcessingMessage(`Processing ${tabs.length} tabs...`)
-      
       // Process in batches with progress updates
-      const BATCH_SIZE = 10
-      const totalBatches = Math.ceil(tabs.length / BATCH_SIZE)
-      
+      const BATCH_SIZE = 10;
+      const totalBatches = Math.ceil(tabs.length / BATCH_SIZE);
+
       for (let i = 0; i < tabs.length; i += BATCH_SIZE) {
-        const batch = tabs.slice(i, i + BATCH_SIZE)
-        const batchNumber = Math.floor(i / BATCH_SIZE) + 1
-        
-        setProcessingMessage(`Processing batch ${batchNumber}/${totalBatches}...`)
-        
-        await addTabs(batch)
-        
-        const progressPercent = Math.min(((i + BATCH_SIZE) / tabs.length) * 100, 100)
-        setProgress(progressPercent)
-        
+        const batch = tabs.slice(i, i + BATCH_SIZE);
+        const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
+
+        setProcessingMessage(`Processing batch ${batchNumber}/${totalBatches}...`);
+
+        await addTabs(batch);
+
+        const progressPercent = Math.min(((i + BATCH_SIZE) / tabs.length) * 100, 100);
+        setProgress(progressPercent);
+
         // Small delay for UI feedback
-        await new Promise(resolve => setTimeout(resolve, 100))
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
 
       // Success
-      toast.success(`Successfully imported ${tabs.length} tabs!`)
-      setTextInput('')
-      setFile(null)
-      setValidUrlCount(0)
+      toast.success(`Successfully imported ${tabs.length} tabs!`);
+      setTextInput('');
+      setFile(null);
+      setValidUrlCount(0);
       if (fileInputRef.current) {
-        fileInputRef.current.value = ''
+        fileInputRef.current.value = '';
       }
-      onImportComplete?.()
+      onImportComplete?.();
+    } catch (error) {
+      console.error('Import error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to import tabs');
+    } finally {
+      setIsProcessing(false);
+      setProgress(0);
+      setProcessingMessage('');
+    }
+  };
+
+  const handleImport = async () => {
+    if (!textInput.trim() && !file) {
+      toast.error('Please paste URLs or select a file');
+      return;
+    }
+
+    setIsProcessing(true);
+    setProcessingMessage('Parsing URLs...');
+
+    try {
+      let tabs: any[] = [];
+      try {
+        if (textInput.trim()) {
+          tabs = await parseTabsFromText(textInput);
+        } else if (file) {
+          tabs = await parseTabsFromFile(file);
+        }
+      } catch (error) {
+        toast.error(`Error parsing file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        setIsProcessing(false);
+        return;
+      }
+
+      if (tabs.length === 0) {
+        toast.error('No valid URLs found');
+        setIsProcessing(false);
+        return;
+      }
+
+      const urls = tabs.map(tab => tab.url);
+      const response = await fetch('/api/tabs/check-duplicates', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ urls }),
+      });
+
+      const { existingTabs } = await response.json();
+
+      if (existingTabs.length > 0) {
+        setTabsToImport(tabs);
+        setDuplicates(existingTabs);
+        setShowDuplicatesDialog(true);
+        setIsProcessing(false);
+        return;
+      }
+
+      await importTabs(tabs);
       
     } catch (error) {
-      console.error('Import error:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to import tabs')
+      console.error('Import error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to import tabs');
     } finally {
-      setIsProcessing(false)
-      setProgress(0)
-      setProcessingMessage('')
+      setIsProcessing(false);
+      setProgress(0);
+      setProcessingMessage('');
     }
-  }
+  };
 
   const canImport = (textInput.trim() || file) && !isProcessing
   const hasValidInput = textInput.trim() ? validUrlCount > 0 : !!file
 
   return (
     <div className="space-y-6">
+      <Dialog open={showDuplicatesDialog} onOpenChange={setShowDuplicatesDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Duplicate Tabs Found</DialogTitle>
+            <DialogDescription>
+              The following tabs already exist in your collection. Choose how to handle them.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="select-all"
+                  checked={selectedDuplicates.length === duplicates.length}
+                  onCheckedChange={checked => {
+                    if (checked) {
+                      setSelectedDuplicates(duplicates.map(d => d.id));
+                    } else {
+                      setSelectedDuplicates([]);
+                    }
+                  }}
+                />
+                <label htmlFor="select-all">Select All</label>
+              </div>
+              <Select
+                onValueChange={value => {
+                  const newResolution = { ...duplicateResolution };
+                  selectedDuplicates.forEach(id => {
+                    newResolution[id] = value;
+                  });
+                  setDuplicateResolution(newResolution);
+                }}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Bulk Action" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="skip">Skip</SelectItem>
+                  <SelectItem value="overwrite">Overwrite</SelectItem>
+                  <SelectItem value="new">Add as New</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="max-h-64 overflow-y-auto space-y-4">
+              {duplicates.map(tab => (
+                <div key={tab.id} className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id={tab.id}
+                      checked={selectedDuplicates.includes(tab.id)}
+                      onCheckedChange={checked => {
+                        if (checked) {
+                          setSelectedDuplicates([...selectedDuplicates, tab.id]);
+                        } else {
+                          setSelectedDuplicates(selectedDuplicates.filter(id => id !== tab.id));
+                        }
+                      }}
+                    />
+                    <label htmlFor={tab.id} className="truncate">
+                      {tab.title}
+                    </label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Select
+                      value={duplicateResolution[tab.id] || 'skip'}
+                      onValueChange={value =>
+                        setDuplicateResolution({ ...duplicateResolution, [tab.id]: value })
+                      }
+                    >
+                      <SelectTrigger className="w-[120px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="skip">Skip</SelectItem>
+                        <SelectItem value="overwrite">Overwrite</SelectItem>
+                        <SelectItem value="new">Add as New</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDuplicatesDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => handleDuplicateResolution('skip')}>Import Only New</Button>
+            <Button onClick={() => handleDuplicateResolution('new')}>Continue</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {/* Main Import Area */}
       <Card>
         <CardHeader className="pb-4">
@@ -220,10 +421,10 @@ export function ImportFormUnified({ onImportComplete }: ImportFormUnifiedProps) 
               
               <div className="space-y-2">
                 <h3 className="font-semibold text-foreground">
-                  Drag & drop or paste your Safari tabs
+                  Drag & drop, paste, or select a file
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  Supports text files, HTML files, or direct URL pasting
+                  Supports any file type with links in it. <a href="/demo-links.txt" download className="underline">Download demo file</a>
                 </p>
               </div>
 
@@ -291,7 +492,6 @@ export function ImportFormUnified({ onImportComplete }: ImportFormUnifiedProps) 
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".txt,.html"
                   onChange={handleFileSelect}
                   className="hidden"
                 />
@@ -397,8 +597,8 @@ export function ImportFormUnified({ onImportComplete }: ImportFormUnifiedProps) 
                       <ol className="list-decimal list-inside text-sm text-muted-foreground space-y-1">
                         <li>Open Safari</li>
                         <li>Tap the tabs icon (bottom right)</li>
-                        <li>Long press "X Tabs" at bottom</li>
-                        <li>Select "Copy X Links"</li>
+                        <li>Long press &quot;X Tabs&quot; at bottom</li>
+                        <li>Select &quot;Copy X Links&quot;</li>
                         <li>Paste in the text area above</li>
                       </ol>
                     </div>
@@ -412,7 +612,7 @@ export function ImportFormUnified({ onImportComplete }: ImportFormUnifiedProps) 
                         <li>Open Safari</li>
                         <li>View → Show Tab Overview</li>
                         <li>Select tabs (⌘+click for multiple)</li>
-                        <li>Right-click → "Copy Links"</li>
+                        <li>Right-click → &quot;Copy Links&quot;</li>
                         <li>Paste in the text area above</li>
                       </ol>
                     </div>

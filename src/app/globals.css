@@ -51,7 +51,6 @@
 
 @layer base {
   * {
-    @apply border-border;
   }
   body {
     @apply bg-background text-foreground;
@@ -118,6 +117,71 @@
   
   .swipe-actions-right {
     @apply right-0 bg-red-500 text-white justify-end;
+  }
+
+  /* Tab Gallery Grid Layouts */
+  .tab-grid {
+    display: grid;
+    gap: 1rem;
+  }
+
+  /* Small thumbnails - more cards per row */
+  .tab-gallery-small .tab-grid {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+
+  /* Medium thumbnails - balanced layout */
+  .tab-gallery-medium .tab-grid {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+
+  /* Large thumbnails - fewer cards per row */
+  .tab-gallery-large .tab-grid {
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  }
+
+  /* List view - single column */
+  .tab-gallery-list .tab-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  /* Responsive adjustments */
+  @media (max-width: 1536px) {
+    .tab-gallery-small .tab-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+    .tab-gallery-medium .tab-grid { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+    .tab-gallery-large .tab-grid { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  }
+
+  @media (max-width: 1024px) {
+    .tab-gallery-small .tab-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+    .tab-gallery-medium .tab-grid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+    .tab-gallery-large .tab-grid { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  }
+
+  @media (max-width: 768px) {
+    .tab-gallery-small .tab-grid { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+    .tab-gallery-medium .tab-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    .tab-gallery-large .tab-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  }
+
+  @media (max-width: 640px) {
+    .tab-gallery-small .tab-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+    .tab-gallery-medium .tab-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+    .tab-gallery-large .tab-grid { grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+  }
+
+  @media (max-width: 480px) {
+    .tab-gallery-small .tab-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+    .tab-gallery-medium .tab-grid { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+    .tab-gallery-large .tab-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  }
+
+  @media (max-width: 400px) {
+    .tab-gallery-small .tab-grid { grid-template-columns: 1fr; }
+    .tab-gallery-medium .tab-grid { grid-template-columns: 1fr; }
+    .tab-gallery-large .tab-grid { grid-template-columns: 1fr; }
   }
 }
 

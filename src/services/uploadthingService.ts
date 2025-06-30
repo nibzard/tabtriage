@@ -1,6 +1,62 @@
 import { logger } from '@/utils/logger'
 import { UTApi } from 'uploadthing/server'
 
+const MAX_CONCURRENT_UPLOADS = 5;
+const requestQueue = [];
+let activeUploads = 0;
+
+async function processQueue() {
+  if (activeUploads >= MAX_CONCURRENT_UPLOADS || requestQueue.length === 0) {
+    return;
+  }
+
+  activeUploads++;
+  const { file, filename, endpoint, resolve, reject } = requestQueue.shift();
+
+  try {
+    const result = await uploadWithRetry(file, filename, endpoint);
+    resolve(result);
+  } catch (error) {
+    reject(error);
+  } finally {
+    activeUploads--;
+    processQueue();
+  }
+}
+
+async function uploadWithRetry(file, filename, endpoint, retries = 3, delay = 1000) {
+  try {
+    const utapi = new UTApi();
+    const fileToUpload = file instanceof File ? file : new File([file], filename, { type: file.type });
+    const response = await utapi.uploadFiles([fileToUpload]);
+
+    if (response && response.length > 0 && response[0].data) {
+      const uploadedFile = response[0].data;
+      logger.info(`Successfully uploaded ${filename} to ${uploadedFile.ufsUrl}`);
+      return {
+        url: uploadedFile.ufsUrl,
+        key: uploadedFile.key,
+        name: uploadedFile.name,
+        size: uploadedFile.size,
+      };
+    }
+
+    if (response && response.length > 0 && response[0].error) {
+      throw new Error(`Upload failed: ${response[0].error.message}`);
+    }
+
+    throw new Error('No upload result returned from UTApi');
+  } catch (error) {
+    if (retries > 0) {
+      logger.warn(`Upload failed for ${filename}, retrying in ${delay}ms...`);
+      await new Promise((res) => setTimeout(res, delay));
+      return uploadWithRetry(file, filename, endpoint, retries - 1, delay * 2);
+    }
+    throw error;
+  }
+}
+
+
 /**
  * Service for handling file uploads to Uploadthing
  * Note: This service is for server-side operations. For client-side uploads,
@@ -26,43 +82,10 @@ export async function uploadToUploadthing(
   filename: string,
   endpoint: 'tabScreenshot' | 'tabImport' = 'tabScreenshot'
 ): Promise<UploadResponse | null> {
-  try {
-    // Initialize UTApi with token from environment
-    const utapi = new UTApi()
-    
-    // Convert Blob to File if needed
-    const fileToUpload = file instanceof File ? file : new File([file], filename, { type: file.type })
-    
-    logger.info(`Uploading ${filename} to Uploadthing via server API`)
-    console.log(`INFO: Uploading ${filename} to Uploadthing via server API`)
-    
-    // Upload using UTApi
-    const response = await utapi.uploadFiles([fileToUpload])
-    
-    if (response && response.length > 0 && response[0].data) {
-      const uploadedFile = response[0].data
-      logger.info(`Successfully uploaded ${filename} to ${uploadedFile.url}`)
-      console.log(`INFO: Successfully uploaded ${filename} to ${uploadedFile.url}`)
-      
-      return {
-        url: uploadedFile.url,
-        key: uploadedFile.key,
-        name: uploadedFile.name,
-        size: uploadedFile.size
-      }
-    }
-    
-    // Check for errors in response
-    if (response && response.length > 0 && response[0].error) {
-      throw new Error(`Upload failed: ${response[0].error.message}`)
-    }
-    
-    throw new Error('No upload result returned from UTApi')
-  } catch (error) {
-    logger.error(`Error uploading ${filename} to Uploadthing:`, error)
-    console.error(`ERROR uploading ${filename} to Uploadthing:`, error)
-    return null
-  }
+  return new Promise((resolve, reject) => {
+    requestQueue.push({ file, filename, endpoint, resolve, reject });
+    processQueue();
+  });
 }
 
 /**

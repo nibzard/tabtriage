@@ -21,7 +21,7 @@ function extractDomain(url: string): string {
 }
 
 // Create a tab object from a URL
-function createTabFromUrl(url: string): Tab {
+function createTabFromUrl(url: string, title: string): Tab {
   try {
     const domain = extractDomain(url)
     const id = generateUUID()
@@ -44,7 +44,7 @@ function createTabFromUrl(url: string): Tab {
 
     return {
       id,
-      title: domain || 'Untitled',  // Use domain as title initially, will be updated later
+      title: title || domain || 'Untitled',  // Use domain as title initially, will be updated later
       url,
       domain: domain || extractDomain(url) || 'unknown',
       dateAdded: new Date().toISOString().split('T')[0],
@@ -152,8 +152,8 @@ export function parseTabsFromText(text: string): Tab[] {
       return [];
     }
     
-    // Split by common delimiters (newlines, spaces, commas)
-    const potentialUrls = text.split(/[\n\r\s,]+/).filter(Boolean);
+    const urlRegex = /(https?:\/\/[^\s,]+)/g;
+    const potentialUrls = text.match(urlRegex) || [];
     
     console.log('Potential URLs:', potentialUrls);
     
@@ -188,7 +188,7 @@ export function parseTabsFromText(text: string): Tab[] {
           processedUrl = `https://${processedUrl}`;
         }
         
-        const tab = createTabFromUrl(processedUrl);
+        const tab = createTabFromUrl(processedUrl, '');
         tabs.push(tab);
       } catch (tabCreationError) {
         console.error(`Error creating tab from URL: ${url}`, tabCreationError);
@@ -215,7 +215,7 @@ export async function parseTabsFromFile(file: File): Promise<Tab[]> {
     
     const reader = new FileReader();
 
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const content = e.target?.result as string;
         
@@ -225,7 +225,6 @@ export async function parseTabsFromFile(file: File): Promise<Tab[]> {
           return;
         }
 
-        // Parse the content as text
         const tabs = parseTabsFromText(content);
         console.log(`File parsing complete. Found ${tabs.length} valid URLs.`);
         resolve(tabs);
@@ -365,64 +364,42 @@ function generateFolderSuggestions(category: string, tags: string[]): string[] {
   return uniqueSuggestions
 }
 
-// Save tabs to storage
+// DEPRECATED: Use API calls instead of localStorage
+// These functions are kept for backwards compatibility but should not be used
 export function saveTabs(tabs: Tab[]): void {
-  localStorage.setItem('tabtriage_tabs', JSON.stringify(tabs))
+  console.warn('saveTabs() is deprecated. Use API calls instead.')
 }
 
-// Get tabs from storage
 export function getTabs(): Tab[] {
-  const tabsJson = localStorage.getItem('tabtriage_tabs')
-  return tabsJson ? JSON.parse(tabsJson) : []
+  console.warn('getTabs() is deprecated. Use API calls instead.')
+  return []
 }
 
-// Update tab status
+// DEPRECATED: Use API calls instead
 export function updateTabStatus(tabId: string, status: 'unprocessed' | 'kept' | 'discarded'): void {
-  const tabs = getTabs()
-  const updatedTabs = tabs.map(tab =>
-    tab.id === tabId ? { ...tab, status } : tab
-  )
-  saveTabs(updatedTabs)
+  console.warn('updateTabStatus() is deprecated. Use API calls instead.')
 }
 
-// Assign tab to folder
+// DEPRECATED: Use API calls instead
 export function assignTabToFolder(tabId: string, folderId: string): void {
-  const tabs = getTabs()
-  
-  // Use type assertion to ensure the status is one of the valid enum values
-  const updatedTabs = tabs.map(tab => {
-    if (tab.id === tabId) {
-      return {
-        ...tab,
-        folderId,
-        status: 'kept' as const // Use const assertion to ensure it's the literal type
-      }
-    }
-    return tab
-  })
-  
-  saveTabs(updatedTabs)
+  console.warn('assignTabToFolder() is deprecated. Use API calls instead.')
 }
 
-// Save folders to storage
+// DEPRECATED: Use API calls instead of localStorage
 export function saveFolders(folders: Folder[]): void {
-  localStorage.setItem('tabtriage_folders', JSON.stringify(folders))
+  console.warn('saveFolders() is deprecated. Use API calls instead.')
 }
 
-// Get folders from storage
 export function getFolders(): Folder[] {
-  const foldersJson = localStorage.getItem('tabtriage_folders')
-  return foldersJson ? JSON.parse(foldersJson) : []
+  console.warn('getFolders() is deprecated. Use API calls instead.')
+  return []
 }
 
-// Create new folder
+// DEPRECATED: Use API calls instead
 export function createFolder(name: string): Folder {
-  const folders = getFolders()
-  const newFolder: Folder = {
+  console.warn('createFolder() is deprecated. Use API calls instead.')
+  return {
     id: `folder-${Date.now()}`,
     name
   }
-
-  saveFolders([...folders, newFolder])
-  return newFolder
 }

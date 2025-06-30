@@ -3,11 +3,12 @@ import { db } from '@/db/client';
 import { tabs, tags, tabTags } from '@/db/schema';
 import { eq, and, inArray, desc } from 'drizzle-orm';
 import { logger } from '@/utils/logger';
-import { hybridSearch } from '@/services/jinaEmbeddingService';
+import { hybridSearch } from '@/services/searchService';
+import { getCurrentUserId as getUser } from '@/utils/get-current-user';
 
 // Simple session management (replace with proper auth later)
-function getCurrentUserId(): string {
-  return 'user_001';
+function getCurrentUserId(request: Request): string {
+  return getUser(request);
 }
 
 /**
@@ -15,14 +16,46 @@ function getCurrentUserId(): string {
  */
 export async function GET(request: Request) {
   try {
-    const userId = getCurrentUserId();
+    const userId = getCurrentUserId(request);
     const url = new URL(request.url);
     const query = url.searchParams.get('q') || '';
     const limit = parseInt(url.searchParams.get('limit') || '20');
-    const vectorWeight = parseFloat(url.searchParams.get('vectorWeight') || '0.7');
-    const textWeight = parseFloat(url.searchParams.get('textWeight') || '0.3');
+    // Parse search weight from slider (0 = keyword, 1 = hybrid, 2 = semantic)
+    const searchWeight = parseFloat(url.searchParams.get('weight') || '1.0');
+    
+    // Convert slider value to vector/text weights
+    let vectorWeight: number;
+    let textWeight: number;
+    
+    if (searchWeight <= 1) {
+      // 0-1: keyword to hybrid (text weight decreases, vector weight increases)
+      textWeight = 1 - searchWeight;
+      vectorWeight = searchWeight;
+    } else {
+      // 1-2: hybrid to semantic (text weight decreases to 0, vector weight stays high)
+      textWeight = Math.max(0, 2 - searchWeight);
+      vectorWeight = 1;
+    }
+    
+    // Normalize weights to sum to 1
+    const totalWeight = vectorWeight + textWeight;
+    if (totalWeight > 0) {
+      vectorWeight = vectorWeight / totalWeight;
+      textWeight = textWeight / totalWeight;
+    }
+    
+    // Also support direct weight parameters for backward compatibility
+    const directVectorWeight = url.searchParams.get('vectorWeight');
+    const directTextWeight = url.searchParams.get('textWeight');
+    if (directVectorWeight && directTextWeight) {
+      vectorWeight = parseFloat(directVectorWeight);
+      textWeight = parseFloat(directTextWeight);
+    }
+    
+    logger.info(`Search API called with userId: ${userId}, query: "${query}"`);
     
     if (!query.trim()) {
+      logger.info('Empty query, returning empty results');
       return NextResponse.json([]);
     }
     

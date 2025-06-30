@@ -16,7 +16,7 @@ TabTriage is a mobile-first web application designed to help users manage and or
 - Automatically categorize content into suggested folders
 - Generate relevant tags based on content analysis
 - Identify potential duplicates or similar content using semantic similarity
-- Fetch and analyze page content for better summaries
+- Extract full page content using Jina Reader API for enhanced semantic understanding
 
 ### Visual Triage Interface
 - Present tabs as a responsive grid of visual cards with screenshots
@@ -53,11 +53,12 @@ TabTriage is a mobile-first web application designed to help users manage and or
 
 ### AI Integration
 - **Embeddings**: Jina Embeddings v3 with 1024-dimensional vectors and task-specific LoRA adapters
+- **Content Extraction**: Jina Reader API for clean text extraction from web pages
 - **Core Engine**: OpenAI GPT-4o API for content analysis
 - **Vector Search**: Turso native F32_BLOB vectors with DiskANN algorithm
 - **Text Search**: SQLite FTS5 with BM25 scoring for keyword matching
 - **Hybrid Search**: Combines semantic understanding with traditional text search
-- **Processing**: Automatic background embedding generation with rate limiting
+- **Processing**: Automatic background embedding generation with enhanced page content
 
 ### Storage
 - **User Data**: SQLite via Turso with global edge replication
@@ -69,7 +70,7 @@ TabTriage is a mobile-first web application designed to help users manage and or
 ### Prerequisites
 
 - Node.js 18.x or later
-- npm or yarn
+- pnpm (recommended), npm, or yarn
 
 ### Installation
 
@@ -81,6 +82,8 @@ TabTriage is a mobile-first web application designed to help users manage and or
 
 2. Install dependencies:
    ```bash
+   pnpm install
+   # or
    npm install
    # or
    yarn install
@@ -88,29 +91,79 @@ TabTriage is a mobile-first web application designed to help users manage and or
 
 3. Create a `.env.local` file in the root directory with the following variables:
    ```
-   # Turso Database Configuration
+   # Environment Configuration
+   NODE_ENV=development
+   
+   # Database Configuration
+   # Set to 'local' for development with SQLite file, 'turso' for cloud database
+   DATABASE_MODE=local
+   
+   # Turso Configuration (required when DATABASE_MODE=turso)
    TURSO_DATABASE_URL=your_turso_database_url
    TURSO_AUTH_TOKEN=your_turso_auth_token
    
-   # AI API Keys
+   # Authentication (required)
+   NEXTAUTH_URL=http://localhost:3000
+   NEXTAUTH_SECRET=your_secure_secret_here
+   
+   # AI API Keys (required for full functionality)
    OPENAI_API_KEY=your_openai_api_key
-   JINA_API_KEY=your_jina_api_key
+   JINA_API_KEY=your_jina_api_key  # Get free API key: https://jina.ai/?sui=apikey
    JINA_API_URL=https://api.jina.ai/v1/embeddings
+   
+   # Uploadthing configuration (optional)
+   UPLOADTHING_TOKEN=your_uploadthing_token
+   
+   # Storage configuration
+   STORAGE_PROVIDER=uploadthing
    ```
 
 4. Set up the database:
+   
+   **For local development (recommended):**
    ```bash
-   npm run migrate
+   # Uses local SQLite file (DATABASE_MODE=local)
+   pnpm migrate
+   ```
+   
+   **For Turso cloud database:**
+   ```bash
+   # Set DATABASE_MODE=turso in .env.local first
+   pnpm db:push
    ```
 
 5. (Optional) View your database:
    ```bash
-   npm run db:studio
+   pnpm db:studio
    ```
+
+### Database Migration
+
+**Migrating from Local to Turso:**
+
+If you've been developing locally and want to migrate your data to Turso:
+
+```bash
+# Migrate all local data to Turso (drops existing Turso tables)
+pnpm migrate:local-to-turso
+```
+
+This command will:
+- Export all data from your local SQLite database
+- Drop and recreate all tables in Turso
+- Import all data to Turso as a 1:1 copy
+- Validate the migration was successful
+
+After migration, update your `.env.local`:
+```bash
+DATABASE_MODE=turso
+```
 
 ### Running the Development Server
 
 ```bash
+pnpm dev
+# or
 npm run dev
 # or
 yarn dev
@@ -121,6 +174,8 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 ### Building for Production
 
 ```bash
+pnpm build
+# or
 npm run build
 # or
 yarn build
@@ -129,6 +184,8 @@ yarn build
 Then, to start the production server:
 
 ```bash
+pnpm start
+# or
 npm run start
 # or
 yarn start
@@ -203,14 +260,15 @@ tabtriage/
 ## Advanced Features
 
 ### Vector Search & Embeddings
-- **1024-dimensional embeddings** using Jina Embeddings v3
-- **Task-specific optimization** with LoRA adapters:
-  - `retrieval.passage` for stored content
+- **Enhanced Content Embedding** using robust HTML extraction + Jina Embeddings v3
+- **Full Page Content Extraction** with multi-strategy HTML parsing for reliable content
+- **1024-dimensional embeddings** with task-specific optimization using LoRA adapters:
+  - `retrieval.passage` for stored content with full page text
   - `retrieval.query` for search queries
   - `text-matching` for similarity comparison
 - **Matryoshka embeddings** support (32-1024 dimensions)
 - **Multilingual support** for 89+ languages with optimized performance for 30 languages
-- **Automatic embedding generation** for new tabs with background processing
+- **Automatic embedding generation** for new tabs with reliable HTML content extraction
 
 ### Search Capabilities
 - **Semantic similarity search** finds related content by meaning
@@ -246,6 +304,9 @@ curl "http://localhost:3000/api/test-jina?action=search&q=your%20search%20query&
 
 # Test embedding generation
 curl "http://localhost:3000/api/test-jina?action=test-embedding&text=Your%20test%20text"
+
+# Test Jina Reader API
+curl "http://localhost:3000/api/test-jina?action=test-reader&url=https://example.com"
 ```
 
 ## Future Enhancements

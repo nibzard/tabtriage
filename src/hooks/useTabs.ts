@@ -2,7 +2,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Tab } from '@/types/Tab'
 import { tabApi } from '@/utils/api-client'
 import { logger } from '@/utils/logger'
-import { getTabs as getLocalTabs, saveTabs as saveLocalTabs } from '@/services/tabService'
 
 /**
  * React Query hook for managing tabs with automatic caching and optimistic updates
@@ -19,88 +18,34 @@ export function useTabs() {
   } = useQuery({
     queryKey: ['tabs'],
     queryFn: async () => {
-      try {
-        // The API route will handle session checks
-        return await tabApi.getTabs()
-      } catch (error) {
-        logger.warn('Failed to fetch tabs from server, using local storage:', error)
-        // Fallback to local storage
-        const localTabs = getLocalTabs()
-        return localTabs.map(tab => ({
-          ...tab,
-          fullScreenshot: tab.fullScreenshot || undefined,
-        }))
-      }
+      // Use API only - no localStorage fallback
+      return await tabApi.getTabs()
     },
     staleTime: 1000 * 60 * 2, // 2 minutes
-    retry: 1,
+    retry: 2, // Increased retry for better reliability
   })
 
   // Mutation for saving/updating tabs
   const saveTabMutation = useMutation({
     mutationFn: async (tab: Tab) => {
-      try {
-        return await tabApi.saveTab(tab)
-      } catch (error) {
-        logger.warn('Failed to save tab to server, saving locally:', error)
-        // Fallback to local storage
-        const currentTabs = queryClient.getQueryData<Tab[]>(['tabs']) || []
-        const updatedTabs = currentTabs.map(t => t.id === tab.id ? tab : t)
-        if (!currentTabs.find(t => t.id === tab.id)) {
-          updatedTabs.push(tab)
-        }
-        saveLocalTabs(updatedTabs)
-        return { success: true, id: tab.id }
-      }
-    },
-    onMutate: async (newTab) => {
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['tabs'] })
-
-      // Snapshot the previous value
-      const previousTabs = queryClient.getQueryData<Tab[]>(['tabs'])
-
-      // Optimistically update the cache
-      queryClient.setQueryData<Tab[]>(['tabs'], (old = []) => {
-        const existingIndex = old.findIndex(tab => tab.id === newTab.id)
-        if (existingIndex >= 0) {
-          // Update existing tab
-          const updated = [...old]
-          updated[existingIndex] = newTab
-          return updated
-        } else {
-          // Add new tab
-          return [...old, newTab]
-        }
-      })
-
-      return { previousTabs }
+      // Use API only - no localStorage fallback
+      return await tabApi.saveTab(tab)
     },
     onError: (err, newTab, context) => {
-      // Rollback on error
-      if (context?.previousTabs) {
-        queryClient.setQueryData(['tabs'], context.previousTabs)
-      }
       logger.error('Failed to save tab:', err)
     },
     onSuccess: (data, variables) => {
       logger.debug(`Successfully saved tab ${variables.id}`)
+      queryClient.invalidateQueries({ queryKey: ['tabs'] })
+      refetch()
     },
   })
 
   // Mutation for deleting tabs
   const deleteTabMutation = useMutation({
     mutationFn: async (tabId: string) => {
-      try {
-        return await tabApi.deleteTab(tabId)
-      } catch (error) {
-        logger.warn('Failed to delete tab from server, deleting locally:', error)
-        // Fallback to local storage
-        const currentTabs = queryClient.getQueryData<Tab[]>(['tabs']) || []
-        const updatedTabs = currentTabs.filter(t => t.id !== tabId)
-        saveLocalTabs(updatedTabs)
-        return { success: true }
-      }
+      // Use API only - no localStorage fallback
+      return await tabApi.deleteTab(tabId)
     },
     onMutate: async (tabId) => {
       await queryClient.cancelQueries({ queryKey: ['tabs'] })
@@ -154,6 +99,8 @@ export function useTabs() {
     })
   }
 
+  
+
   const deleteTab = (tabId: string) => {
     deleteTabMutation.mutate(tabId)
   }
@@ -177,6 +124,26 @@ export function useTabs() {
     })
   }
 
+  const findDuplicateTabs = () => {
+    const urlMap = new Map<string, Tab[]>()
+    tabs.forEach(tab => {
+      const url = tab.url
+      if (!urlMap.has(url)) {
+        urlMap.set(url, [])
+      }
+      urlMap.get(url)!.push(tab)
+    })
+
+    const duplicates: Tab[] = []
+    urlMap.forEach(tabs => {
+      if (tabs.length > 1) {
+        duplicates.push(...tabs)
+      }
+    })
+
+    return duplicates
+  }
+
   return {
     // Data
     tabs,
@@ -191,6 +158,7 @@ export function useTabs() {
     discardTab,
     assignToFolder,
     deleteAllDiscarded,
+    findDuplicateTabs,
     refetch,
 
     // Mutation states

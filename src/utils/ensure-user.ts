@@ -1,6 +1,6 @@
 import { db } from '@/db/client';
 import { users } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { logger } from './logger';
 
 /**
@@ -8,19 +8,17 @@ import { logger } from './logger';
  */
 export async function ensureUserExists(userId: string): Promise<void> {
   try {
-    // Check if user exists
-    const existingUser = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-    
-    if (existingUser.length === 0) {
-      // Create the user
-      await db.insert(users).values({
+    // Use Drizzle ORM with the corrected schema
+    await db
+      .insert(users)
+      .values({
         id: userId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
-      logger.debug(`Created user ${userId} in database`);
-    }
-  } catch (error) {
+        email: `${userId}@example.com`,
+        displayName: userId,
+      })
+      .onConflictDoNothing();
+    logger.debug(`Ensured user ${userId} exists in database`);
+  } catch (error: any) {
     logger.error('Error ensuring user exists:', error);
     throw error;
   }
