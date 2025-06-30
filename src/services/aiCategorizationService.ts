@@ -1,4 +1,5 @@
 import { logger } from '@/utils/logger'
+import { GlobalRateLimitManager, RateLimitConfigs } from './rateLimitService'
 
 const CATEGORIES = [
   'news', 'shopping', 'reference', 'social', 'entertainment', 
@@ -10,44 +11,66 @@ export async function categorizeTabWithAI(url: string, pageContent: string): Pro
   try {
     logger.debug(`Categorizing tab with AI: ${url}`)
 
-    if (process.env.OPENAI_API_KEY && pageContent) {
+    if (process.env.GEMINI_API_KEY && pageContent) {
       try {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-          },
-          body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            messages: [
-              {
-                role: 'system',
-                content: `You are an expert at categorizing web pages. Assign one of the following categories to the given page content: ${CATEGORIES.join(', ')}. Respond with only the category name.`
-              },
-              {
-                role: 'user',
-                content: `URL: ${url}\n\nPage Content: ${pageContent.substring(0, 4000)}`
+        const prompt = `You are an expert at categorizing web pages. Assign one of the following categories to the given page content: ${CATEGORIES.join(', ')}.
+
+URL: ${url}
+
+Page Content: ${pageContent.substring(0, 4000)}
+
+Respond with only the category name (one word).`
+
+        // Use rate-limited Gemini API call
+        const rateLimitManager = GlobalRateLimitManager.getInstance()
+        const geminiService = rateLimitManager.getService('gemini', RateLimitConfigs.GEMINI)
+        
+        const response = await geminiService.enqueue(async () => {
+          logger.debug(`Making rate-limited Gemini categorization call for: ${url}`)
+          return fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': process.env.GEMINI_API_KEY
+            },
+            body: JSON.stringify({
+              contents: [{
+                parts: [{
+                  text: prompt
+                }]
+              }],
+              generationConfig: {
+                temperature: 0.1,
+                topK: 10,
+                topP: 0.8,
+                maxOutputTokens: 10,
+                responseMimeType: "text/plain"
               }
-            ],
-            temperature: 0.1,
-            max_tokens: 10
+            })
           })
-        })
+        }, 0) // Priority 0 for categorization (lower than summary)
 
         if (!response.ok) {
-          throw new Error(`OpenAI API error: ${response.status} ${response.statusText}`)
+          const errorText = await response.text()
+          throw new Error(`Gemini API error: ${response.status} ${response.statusText} - ${errorText}`)
         }
 
         const data = await response.json()
-        const category = data.choices[0].message.content.trim().toLowerCase()
+        
+        if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
+          throw new Error('Invalid response structure from Gemini API')
+        }
+
+        const category = data.candidates[0].content.parts[0].text.trim().toLowerCase()
 
         if (CATEGORIES.includes(category)) {
           logger.debug(`Successfully categorized ${url} as: ${category}`)
           return category
+        } else {
+          logger.warn(`Gemini returned invalid category '${category}' for ${url}, falling back to simulation`)
         }
       } catch (apiError) {
-        logger.error(`Error calling OpenAI API for categorization of ${url}:`, apiError)
+        logger.error(`Error calling Gemini API for categorization of ${url}:`, apiError)
       }
     }
 

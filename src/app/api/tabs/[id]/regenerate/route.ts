@@ -5,7 +5,7 @@ import { tabs } from '@/db/schema'
 import { captureScreenshots } from '@/services/screenshotService'
 import { updateTabEmbeddingWithContent } from '@/services/jinaEmbeddingService'
 import { extractPageContent } from '@/services/contentExtractionService'
-import { generateSummaryWithAI } from '@/services/openaiService'
+import { generateSummaryWithAI } from '@/services/geminiService'
 import { categorizeTabWithAI } from '@/services/aiCategorizationService'
 import { logger } from '@/utils/logger'
 

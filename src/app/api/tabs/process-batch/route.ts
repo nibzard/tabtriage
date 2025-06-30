@@ -5,7 +5,7 @@ import { eq, inArray, and } from 'drizzle-orm';
 import { logger } from '@/utils/logger';
 import { captureScreenshots } from '@/services/screenshotService';
 import { extractPageContent } from '@/services/contentExtractionService';
-import { generateSummaryWithAI } from '@/services/openaiService';
+import { generateSummaryWithAI } from '@/services/geminiService';
 import { categorizeTabWithAI } from '@/services/aiCategorizationService';
 import { updateTabEmbeddingWithContent } from '@/services/jinaEmbeddingService';
 import { TabImportRetryService } from '@/services/retryService';

@@ -4,6 +4,7 @@ import { eq, and, desc, sql as sqlTemplate } from 'drizzle-orm';
 import { logger } from '@/utils/logger';
 import { globalEmbeddingCache } from './embeddingCache';
 import { extractPageContent } from './contentExtractionService';
+import { GlobalRateLimitManager, RateLimitConfigs } from './rateLimitService';
 
 /**
  * Jina Embeddings v3 API integration
@@ -73,14 +74,21 @@ async function generateEmbedding(
       input: text
     };
 
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify(requestData)
-    });
+    // Use rate-limited API call
+    const rateLimitManager = GlobalRateLimitManager.getInstance()
+    const jinaService = rateLimitManager.getService('jina-embeddings', RateLimitConfigs.JINA_EMBEDDINGS)
+    
+    const response = await jinaService.enqueue(async () => {
+      logger.debug(`Making rate-limited Jina embedding call (task: ${task})`)
+      return fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify(requestData)
+      })
+    }, task === 'retrieval.query' ? 2 : 0) // Higher priority for search queries
 
     if (!response.ok) {
       const errorText = await response.text();
