@@ -32,6 +32,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Tooltip } from '@/components/ui/tooltip'
 
 interface FolderContentModernProps {
   folder?: Folder
@@ -211,12 +212,20 @@ export function FolderContentModern({
                         <div className="flex-1 min-w-0 space-y-2">
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 min-w-0">
-                              <h3 className="font-semibold text-foreground line-clamp-2">
-                                {tab.title}
-                              </h3>
-                              <p className="text-sm text-muted-foreground truncate">
-                                {tab.domain}
-                              </p>
+                              <div className="block">
+                                <Tooltip content={tab.title}>
+                                  <h3 className="font-semibold text-foreground line-clamp-2">
+                                    {tab.title}
+                                  </h3>
+                                </Tooltip>
+                              </div>
+                              <div className="block mt-1">
+                                <Tooltip content={tab.url}>
+                                  <p className="text-sm text-muted-foreground truncate">
+                                    {tab.domain}
+                                  </p>
+                                </Tooltip>
+                              </div>
                             </div>
                             
                             {/* Actions Dropdown */}
@@ -261,9 +270,11 @@ export function FolderContentModern({
                           
                           {/* Tab Summary */}
                           {tab.summary && (
-                            <p className="text-sm text-muted-foreground line-clamp-2">
-                              {tab.summary}
-                            </p>
+                            <Tooltip content={tab.summary}>
+                              <p className="text-sm text-muted-foreground line-clamp-2">
+                                {tab.summary}
+                              </p>
+                            </Tooltip>
                           )}
                           
                           {/* Tags */}

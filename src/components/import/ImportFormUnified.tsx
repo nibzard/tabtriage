@@ -39,6 +39,7 @@ import {
 import { useTabs } from '@/hooks/useTabs'
 import { parseTabsFromText, parseTabsFromFile } from '@/services/tabService'
 import { useResponsive } from '@/hooks/useUI'
+import { UrlSanitizationSettings } from './UrlSanitizationSettings'
 
 interface ImportFormUnifiedProps {
   onImportComplete?: () => void
@@ -61,6 +62,7 @@ export function ImportFormUnified({ onImportComplete }: ImportFormUnifiedProps) 
   const [backgroundBatchId, setBackgroundBatchId] = useState<string | null>(null)
   const [backgroundProgress, setBackgroundProgress] = useState(0)
   const [backgroundMessage, setBackgroundMessage] = useState('')
+  const [urlSanitizationEnabled, setUrlSanitizationEnabled] = useState(true)
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { refetch } = useTabs()
@@ -257,7 +259,8 @@ export function ImportFormUnified({ onImportComplete }: ImportFormUnifiedProps) 
         },
         body: JSON.stringify({ 
           tabs,
-          skipDuplicates: true 
+          skipDuplicates: true,
+          sanitizeUrls: urlSanitizationEnabled
         }),
       });
 
@@ -677,6 +680,12 @@ export function ImportFormUnified({ onImportComplete }: ImportFormUnifiedProps) 
           </AnimatePresence>
         </CardContent>
       </Card>
+
+      {/* URL Sanitization Settings */}
+      <UrlSanitizationSettings
+        enabled={urlSanitizationEnabled}
+        onToggle={setUrlSanitizationEnabled}
+      />
 
       {/* Help Section */}
       <Collapsible open={showHelp} onOpenChange={setShowHelp}>

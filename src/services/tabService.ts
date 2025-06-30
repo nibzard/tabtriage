@@ -6,6 +6,7 @@ import { generateSummaryWithAI } from './openaiService'
 import { generateTabEmbedding } from './embeddingService'
 import { logger } from '@/utils/logger'
 import { generateUUID } from '@/utils/uuid'
+import { sanitizeUrl } from './urlSanitizer'
 
 // In a real application, these functions would make API calls to a backend
 // For the MVP, we're implementing them with localStorage for client-side persistence
@@ -23,8 +24,8 @@ function extractDomain(url: string): string {
 // Create a tab object from a URL
 function createTabFromUrl(url: string, title: string): Tab {
   try {
-    const domain = extractDomain(url)
     const id = generateUUID()
+    let processedUrl = url;
     
     // Make sure URL is valid and properly formatted
     try {
@@ -32,21 +33,33 @@ function createTabFromUrl(url: string, title: string): Tab {
     } catch (e) {
       // If invalid, force add https:// if not present
       if (!url.startsWith('http')) {
-        url = `https://${url}`;
+        processedUrl = `https://${url}`;
         // Validate again
-        new URL(url);
+        new URL(processedUrl);
       } else {
         // Still invalid even with http, use a placeholder
         console.warn(`Invalid URL format: ${url}, using placeholder`);
-        url = `https://example.com/invalid-url-${id}`;
+        processedUrl = `https://example.com/invalid-url-${id}`;
       }
+    }
+
+    // Sanitize the URL to remove tracking parameters
+    const sanitizationResult = sanitizeUrl(processedUrl);
+    const finalUrl = sanitizationResult.sanitizedUrl;
+    const domain = extractDomain(finalUrl);
+
+    // Log sanitization if URL was modified
+    if (sanitizationResult.wasModified) {
+      logger.info(`URL sanitized: ${processedUrl} -> ${finalUrl}`, {
+        removedParams: sanitizationResult.removedParams
+      });
     }
 
     return {
       id,
       title: title || domain || 'Untitled',  // Use domain as title initially, will be updated later
-      url,
-      domain: domain || extractDomain(url) || 'unknown',
+      url: finalUrl,
+      domain: domain || 'unknown',
       dateAdded: new Date().toISOString().split('T')[0],
       summary: '',
       category: 'uncategorized',

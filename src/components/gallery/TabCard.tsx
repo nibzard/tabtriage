@@ -20,6 +20,7 @@ import { Tab } from '@/types/Tab'
 import { logger } from '@/utils/logger'
 import { HighlightedText, SearchSnippet } from '@/components/ui/HighlightedText'
 import { ScreenshotPreviewModal } from '@/components/ui/screenshot-preview-modal'
+import { Tooltip } from '@/components/ui/tooltip'
 
 interface TabCardProps {
   tab: Tab
@@ -188,12 +189,20 @@ const TabCard = memo(function TabCard({
                   </button>
 
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-medium text-sm line-clamp-1 text-foreground">
-                      <HighlightedText text={tab.title} searchTerm={searchTerm} />
-                    </h3>
-                    <p className="text-muted-foreground text-xs truncate">
-                      <HighlightedText text={tab.domain || ''} searchTerm={searchTerm} />
-                    </p>
+                    <div className="block">
+                      <Tooltip content={tab.title}>
+                        <h3 className="font-medium text-sm line-clamp-1 text-foreground">
+                          <HighlightedText text={tab.title} searchTerm={searchTerm} />
+                        </h3>
+                      </Tooltip>
+                    </div>
+                    <div className="block mt-1">
+                      <Tooltip content={tab.url}>
+                        <p className="text-muted-foreground text-xs truncate">
+                          <HighlightedText text={tab.domain || ''} searchTerm={searchTerm} />
+                        </p>
+                      </Tooltip>
+                    </div>
                   </div>
                 </div>
 
@@ -384,12 +393,20 @@ const TabCard = memo(function TabCard({
               </button>
 
               <div className="flex-1 min-w-0">
-                <h3 className="font-medium leading-5 line-clamp-2 text-foreground text-sm">
-                  <HighlightedText text={tab.title} searchTerm={searchTerm} />
-                </h3>
-                <p className="text-muted-foreground mt-1 truncate text-xs">
-                  <HighlightedText text={tab.domain || ''} searchTerm={searchTerm} />
-                </p>
+                <div className="block">
+                  <Tooltip content={tab.title}>
+                    <h3 className="font-medium leading-5 line-clamp-2 text-foreground text-sm">
+                      <HighlightedText text={tab.title} searchTerm={searchTerm} />
+                    </h3>
+                  </Tooltip>
+                </div>
+                <div className="block mt-1">
+                  <Tooltip content={tab.url}>
+                    <p className="text-muted-foreground text-xs truncate">
+                      <HighlightedText text={tab.domain || ''} searchTerm={searchTerm} />
+                    </p>
+                  </Tooltip>
+                </div>
               </div>
 
               <DropdownMenu>

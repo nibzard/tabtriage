@@ -4,6 +4,7 @@ import { tabs } from '@/db/schema';
 import { logger } from '@/utils/logger';
 import { getCurrentUserId } from '@/utils/get-current-user';
 import { ensureUserExists } from '@/utils/ensure-user';
+import { sanitizeUrl } from '@/services/urlSanitizer';
 
 interface BatchTabInput {
   id?: string;
@@ -44,9 +45,10 @@ export async function POST(request: Request) {
     await ensureUserExists(userId);
     
     const body = await request.json();
-    const { tabs: inputTabs, skipDuplicates = false } = body as { 
+    const { tabs: inputTabs, skipDuplicates = false, sanitizeUrls = true } = body as { 
       tabs: BatchTabInput[]; 
       skipDuplicates?: boolean;
+      sanitizeUrls?: boolean;
     };
     
     if (!Array.isArray(inputTabs) || inputTabs.length === 0) {
@@ -89,7 +91,7 @@ export async function POST(request: Request) {
             const globalIndex = batchStartIndex + i;
             
             try {
-              // Validate URL
+              // Validate and sanitize URL
               let validatedUrl: string;
               try {
                 const urlObj = new URL(tabInput.url);
@@ -103,9 +105,23 @@ export async function POST(request: Request) {
                   throw new Error('Invalid URL format');
                 }
               }
+
+              // Sanitize the URL to remove tracking parameters (if enabled)
+              let finalUrl = validatedUrl;
+              if (sanitizeUrls) {
+                const sanitizationResult = sanitizeUrl(validatedUrl);
+                finalUrl = sanitizationResult.sanitizedUrl;
+                
+                // Log sanitization if URL was modified
+                if (sanitizationResult.wasModified) {
+                  logger.info(`Batch import URL sanitized: ${validatedUrl} -> ${finalUrl}`, {
+                    removedParams: sanitizationResult.removedParams
+                  });
+                }
+              }
               
               // Extract domain if not provided
-              const domain = tabInput.domain || new URL(validatedUrl).hostname.replace('www.', '');
+              const domain = tabInput.domain || new URL(finalUrl).hostname.replace('www.', '');
               
               // Create tab record
               const tabId = tabInput.id || generateId();
@@ -116,7 +132,7 @@ export async function POST(request: Request) {
                 userId,
                 folderId: tabInput.folderId || null,
                 title: (tabInput.title || domain).substring(0, 255),
-                url: validatedUrl.substring(0, 2048),
+                url: finalUrl.substring(0, 2048),
                 domain: domain.substring(0, 255),
                 dateAdded: tabInput.dateAdded || now,
                 summary: tabInput.summary || '',
@@ -145,7 +161,7 @@ export async function POST(request: Request) {
                 }
               });
               
-              result.successful.push({ id: tabId, url: validatedUrl });
+              result.successful.push({ id: tabId, url: finalUrl });
               
             } catch (error) {
               const errorMessage = error instanceof Error ? error.message : 'Unknown error';
