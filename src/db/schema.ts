@@ -69,6 +69,22 @@ export const suggestedFolders = sqliteTable('suggested_folders', {
   createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
 });
 
+// Import batches table for tracking bulk imports
+export const importBatches = sqliteTable('import_batches', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  status: text('status', { enum: ['pending', 'processing', 'completed', 'failed'] }).default('pending'),
+  totalTabs: integer('total_tabs').notNull().default(0),
+  successfulTabs: integer('successful_tabs').notNull().default(0),
+  failedTabs: integer('failed_tabs').notNull().default(0),
+  progress: integer('progress').notNull().default(0), // 0-100
+  errors: text('errors'), // JSON array of error messages
+  createdAt: text('created_at').default(sql`CURRENT_TIMESTAMP`),
+  startedAt: text('started_at'),
+  completedAt: text('completed_at'),
+  updatedAt: text('updated_at').default(sql`CURRENT_TIMESTAMP`),
+});
+
 // Type exports for TypeScript
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -87,3 +103,6 @@ export type NewTabTag = typeof tabTags.$inferInsert;
 
 export type SuggestedFolder = typeof suggestedFolders.$inferSelect;
 export type NewSuggestedFolder = typeof suggestedFolders.$inferInsert;
+
+export type ImportBatch = typeof importBatches.$inferSelect;
+export type NewImportBatch = typeof importBatches.$inferInsert;

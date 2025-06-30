@@ -58,10 +58,63 @@ export function ImportFormUnified({ onImportComplete }: ImportFormUnifiedProps) 
   const [duplicateResolution, setDuplicateResolution] = useState<any>({})
   const [selectedDuplicates, setSelectedDuplicates] = useState<string[]>([])
   const [tabsToImport, setTabsToImport] = useState<any[]>([])
+  const [backgroundBatchId, setBackgroundBatchId] = useState<string | null>(null)
+  const [backgroundProgress, setBackgroundProgress] = useState(0)
+  const [backgroundMessage, setBackgroundMessage] = useState('')
   
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const { addTabs } = useTabs()
+  const { refetch } = useTabs()
   const { isMobile } = useResponsive()
+
+  // Track background processing
+  const trackBackgroundProcessing = async (batchId: string, totalTabs: number) => {
+    setBackgroundBatchId(batchId)
+    setBackgroundProgress(0)
+    setBackgroundMessage('Processing screenshots and AI analysis...')
+    
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/tabs/import-status?batchId=${batchId}`)
+        if (response.ok) {
+          const status = await response.json()
+          
+          setBackgroundProgress(status.progress)
+          
+          if (status.status === 'completed') {
+            setBackgroundMessage('Processing complete!')
+            clearInterval(pollInterval)
+            setTimeout(() => {
+              setBackgroundBatchId(null)
+              setBackgroundProgress(0)
+              setBackgroundMessage('')
+              refetch() // Refresh the tabs list
+            }, 2000)
+          } else if (status.status === 'failed') {
+            setBackgroundMessage('Some processing failed, but tabs were imported')
+            clearInterval(pollInterval)
+            setTimeout(() => {
+              setBackgroundBatchId(null)
+              setBackgroundProgress(0)
+              setBackgroundMessage('')
+              refetch()
+            }, 3000)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to poll import status:', error)
+      }
+    }, 2000) // Poll every 2 seconds
+    
+    // Stop polling after 10 minutes max
+    setTimeout(() => {
+      clearInterval(pollInterval)
+      if (backgroundBatchId === batchId) {
+        setBackgroundBatchId(null)
+        setBackgroundProgress(0)
+        setBackgroundMessage('')
+      }
+    }, 600000)
+  }
 
   // Real-time URL validation
   const validateUrls = useCallback((text: string) => {
@@ -192,38 +245,55 @@ export function ImportFormUnified({ onImportComplete }: ImportFormUnifiedProps) 
 
   const importTabs = async (tabs: any[]) => {
     setIsProcessing(true);
-    setProcessingMessage(`Processing ${tabs.length} tabs...`);
+    setProcessingMessage(`Importing ${tabs.length} tabs...`);
     setProgress(0);
 
     try {
-      // Process in batches with progress updates
-      const BATCH_SIZE = 10;
-      const totalBatches = Math.ceil(tabs.length / BATCH_SIZE);
+      // Use the new batch import API
+      const response = await fetch('/api/tabs/batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          tabs,
+          skipDuplicates: true 
+        }),
+      });
 
-      for (let i = 0; i < tabs.length; i += BATCH_SIZE) {
-        const batch = tabs.slice(i, i + BATCH_SIZE);
-        const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
-
-        setProcessingMessage(`Processing batch ${batchNumber}/${totalBatches}...`);
-
-        await addTabs(batch);
-
-        const progressPercent = Math.min(((i + BATCH_SIZE) / tabs.length) * 100, 100);
-        setProgress(progressPercent);
-
-        // Small delay for UI feedback
-        await new Promise(resolve => setTimeout(resolve, 100));
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Import failed');
       }
 
-      // Success
-      toast.success(`Successfully imported ${tabs.length} tabs!`);
+      const result = await response.json();
+      const { successful, failed, importBatchId } = result;
+
+      // Show immediate results
+      setProgress(100);
+      
+      if (successful.length > 0) {
+        toast.success(`Successfully imported ${successful.length} tabs!`);
+        
+        // Start tracking background processing
+        trackBackgroundProcessing(importBatchId, successful.length);
+      }
+      
+      if (failed.length > 0) {
+        toast.error(`Failed to import ${failed.length} tabs`);
+        console.error('Failed tabs:', failed);
+      }
+
+      // Clear form
       setTextInput('');
       setFile(null);
       setValidUrlCount(0);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+      
       onImportComplete?.();
+      
     } catch (error) {
       console.error('Import error:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to import tabs');
@@ -562,6 +632,45 @@ export function ImportFormUnified({ onImportComplete }: ImportFormUnifiedProps) 
                 </div>
                 <p className="text-xs text-muted-foreground text-center">
                   {processingMessage}
+                </p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Background Processing Progress */}
+          <AnimatePresence>
+            {backgroundBatchId && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="space-y-2 mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                    <span className="text-sm font-medium text-blue-800">
+                      Background Processing
+                    </span>
+                  </div>
+                  <span className="text-xs text-blue-600">
+                    {backgroundProgress}%
+                  </span>
+                </div>
+                <div className="w-full bg-blue-200 rounded-full h-2">
+                  <motion.div
+                    className="bg-blue-500 h-2 rounded-full"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${backgroundProgress}%` }}
+                    transition={{ duration: 0.5 }}
+                  />
+                </div>
+                <p className="text-xs text-blue-700">
+                  {backgroundMessage}
+                </p>
+                <p className="text-xs text-blue-600">
+                  Your tabs have been imported and are being processed in the background.
+                  You can continue using the app while this completes.
                 </p>
               </motion.div>
             )}

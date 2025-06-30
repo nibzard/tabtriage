@@ -57,6 +57,44 @@ export const tabApi = {
       method: 'DELETE',
     });
   },
+
+  /**
+   * Batch import tabs
+   */
+  async batchImport(tabs: Tab[], skipDuplicates = false): Promise<{
+    successful: Array<{ id: string; url: string }>;
+    failed: Array<{ url: string; error: string; index: number }>;
+    total: number;
+    importBatchId: string;
+  }> {
+    return apiRequest(`${API_BASE}/tabs/batch`, {
+      method: 'POST',
+      body: JSON.stringify({ tabs, skipDuplicates }),
+    });
+  },
+
+  /**
+   * Get import status for a batch
+   */
+  async getImportStatus(batchId: string): Promise<{
+    batchId: string;
+    status: string;
+    totalTabs: number;
+    completedTabs: number;
+    failedTabs: number;
+    progress: number;
+    tabs: Array<{
+      id: string;
+      url: string;
+      title: string;
+      status: string;
+      hasScreenshot: boolean;
+      hasSummary: boolean;
+      errors?: any;
+    }>;
+  }> {
+    return apiRequest(`${API_BASE}/tabs/import-status?batchId=${batchId}`);
+  },
 };
 
 /**
