@@ -17,7 +17,8 @@ import {
   Calendar,
   Globe,
   Hash,
-  MoreVertical
+  MoreVertical,
+  Edit
 } from 'lucide-react'
 import {
   Select,
@@ -33,22 +34,26 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Tooltip } from '@/components/ui/tooltip'
+import { EditTabModal } from '@/components/ui/edit-tab-modal'
 
 interface FolderContentModernProps {
   folder?: Folder
   tabs: Tab[]
   onDiscardTab: (tabId: string) => void
   onDeleteTab: (tabId: string) => void
+  onUpdateTab?: (tabId: string, updates: Partial<Tab>) => void
 }
 
 export function FolderContentModern({ 
   folder, 
   tabs, 
   onDiscardTab, 
-  onDeleteTab 
+  onDeleteTab,
+  onUpdateTab 
 }: FolderContentModernProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState('date')
+  const [editingTab, setEditingTab] = useState<Tab | null>(null)
 
   // Filter and sort tabs
   const processedTabs = useMemo(() => {
@@ -251,6 +256,14 @@ export function FolderContentModern({
                                     Open Tab
                                   </a>
                                 </DropdownMenuItem>
+                                {onUpdateTab && (
+                                  <DropdownMenuItem
+                                    onClick={() => setEditingTab(tab)}
+                                  >
+                                    <Edit className="h-4 w-4 mr-2" />
+                                    Edit
+                                  </DropdownMenuItem>
+                                )}
                                 <DropdownMenuItem
                                   onClick={() => onDiscardTab(tab.id)}
                                 >
@@ -344,6 +357,19 @@ export function FolderContentModern({
           </div>
         )}
       </CardContent>
+      
+      {/* Edit Modal */}
+      {editingTab && onUpdateTab && (
+        <EditTabModal
+          tab={editingTab}
+          isOpen={!!editingTab}
+          onClose={() => setEditingTab(null)}
+          onSave={async (updates) => {
+            await onUpdateTab(editingTab.id, updates)
+            setEditingTab(null)
+          }}
+        />
+      )}
     </Card>
   )
 }

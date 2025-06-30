@@ -28,7 +28,8 @@
       "Bash(TURSO_DATABASE_URL=\"libsql://tabtriage-nibzard.aws-eu-west-1.turso.io\" TURSO_AUTH_TOKEN=\"eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJnaWQiOiI5M2I0MjY4NS1lYWFhLTQ0ZGQtYTU2NC03YjNjZWM4NWJhZGIiLCJpYXQiOjE3NTA3OTQ2MzIsInJpZCI6IjhlM2MzYWJhLWU5YzgtNDAyZC1hNjRkLTY1Yjc1OTIyMmQ4MCJ9.7UoJhFeV-801lJR8PkTRDuA-UhUPo78P56CzJEr6z2uelRhZnYbBYCW3_n28YyXxZ6rtGlZL8RkzR1DS32RmBQ\" node -e \"\nconst { createClient } = require('@libsql/client');\nconst client = createClient({\n  url: process.env.TURSO_DATABASE_URL,\n  authToken: process.env.TURSO_AUTH_TOKEN,\n});\nclient.execute('SELECT COUNT(*) as total FROM tabs WHERE user_id = \\\"user_001\\\"').then(result => {\n  console.log('Total tabs for user_001:', result.rows[0].total);\n  return client.execute('SELECT user_id, title, thumbnail_url FROM tabs WHERE user_id = \\\"user_001\\\" LIMIT 5');\n}).then(result => {\n  console.log('\\\\nTurso database content for user_001:');\n  result.rows.forEach(row => {\n    console.log(\\`- User: \\${row.user_id}, Title: \\${row.title}, thumbnail_url: '\\${row.thumbnail_url}'\\`);\n  });\n  client.close();\n});\n\")",
       "Bash(curl:*)",
       "Bash(npx tsc:*)",
-      "Bash(pnpm add:*)"
+      "Bash(pnpm add:*)",
+      "Bash(grep:*)"
     ],
     "deny": []
   }

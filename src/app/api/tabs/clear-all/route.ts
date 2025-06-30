@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm'
 import { logger } from '@/utils/logger'
 import { getCurrentUserId as getUser } from '@/utils/get-current-user'
 import { ensureUserExists } from '@/utils/ensure-user'
+import { deleteFilesByUrls } from '@/services/uploadthingService'
 
 // Simple session management (replace with proper auth later)
 async function getCurrentUserId(request?: Request): Promise<string> {
@@ -20,15 +21,51 @@ export async function DELETE(request: NextRequest) {
     
     logger.info(`Starting clear all data operation for user: ${userId}`)
     
-    // Delete all user data in the correct order (respecting foreign key constraints)
-    
-    // 1. Delete tab-tag relationships for user's tabs
-    const userTabIds = await db
-      .select({ id: tabs.id })
+    // First, collect all image URLs that need to be deleted from Uploadthing
+    const userTabsWithImages = await db
+      .select({
+        id: tabs.id,
+        thumbnailUrl: tabs.thumbnailUrl,
+        screenshotUrl: tabs.screenshotUrl,
+        fullScreenshotUrl: tabs.fullScreenshotUrl
+      })
       .from(tabs)
       .where(eq(tabs.userId, userId))
     
-    const tabIds = userTabIds.map(tab => tab.id)
+    // Collect all Uploadthing URLs for deletion
+    const uploadthingUrls: string[] = []
+    for (const tab of userTabsWithImages) {
+      if (tab.thumbnailUrl?.includes('utfs.io')) {
+        uploadthingUrls.push(tab.thumbnailUrl)
+      }
+      if (tab.screenshotUrl?.includes('utfs.io')) {
+        uploadthingUrls.push(tab.screenshotUrl)
+      }
+      if (tab.fullScreenshotUrl?.includes('utfs.io')) {
+        uploadthingUrls.push(tab.fullScreenshotUrl)
+      }
+    }
+    
+    // Delete images from Uploadthing before deleting database records
+    let deletedImages = 0
+    if (uploadthingUrls.length > 0) {
+      logger.info(`Deleting ${uploadthingUrls.length} images from Uploadthing`)
+      try {
+        const deleteSuccess = await deleteFilesByUrls(uploadthingUrls)
+        if (deleteSuccess) {
+          deletedImages = uploadthingUrls.length
+          logger.info(`Successfully deleted ${deletedImages} images from Uploadthing`)
+        } else {
+          logger.warn('Some images may not have been deleted from Uploadthing')
+        }
+      } catch (error) {
+        logger.error('Error deleting images from Uploadthing:', error)
+        // Continue with database deletion even if image deletion fails
+      }
+    }
+    
+    // Delete all user data in the correct order (respecting foreign key constraints)
+    const tabIds = userTabsWithImages.map(tab => tab.id)
     
     if (tabIds.length > 0) {
       // Delete suggested folders for user's tabs
@@ -60,15 +97,21 @@ export async function DELETE(request: NextRequest) {
     const totalDeleted = {
       tabs: deletedTabs.length,
       folders: deletedFolders.length,
-      tabIds: tabIds.length
+      tabIds: tabIds.length,
+      images: deletedImages
     }
     
     logger.info(`Clear all data completed for user ${userId}:`, totalDeleted)
     
     return NextResponse.json({
       success: true,
-      message: 'All user data cleared successfully',
-      deleted: totalDeleted
+      message: 'All user data and uploaded images cleared successfully',
+      deleted: totalDeleted,
+      details: {
+        databaseRecords: deletedTabs.length + deletedFolders.length,
+        uploadedImages: deletedImages,
+        totalStorageFreed: deletedImages > 0 ? `${deletedImages} images removed from cloud storage` : 'No images to remove'
+      }
     })
     
   } catch (error) {

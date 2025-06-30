@@ -176,6 +176,68 @@ function getDomainFromUrl(url: string): string {
 }
 
 /**
+ * Delete files from Uploadthing by their keys
+ * @param fileKeys - Array of file keys to delete
+ * @returns Success status
+ */
+export async function deleteFiles(fileKeys: string[]): Promise<boolean> {
+  if (!fileKeys || fileKeys.length === 0) {
+    return true;
+  }
+
+  try {
+    const utapi = new UTApi();
+    const response = await utapi.deleteFiles(fileKeys);
+    
+    if (response.success) {
+      logger.info(`Successfully deleted ${fileKeys.length} files from Uploadthing`);
+      return true;
+    } else {
+      logger.error('Failed to delete files from Uploadthing:', response);
+      return false;
+    }
+  } catch (error) {
+    logger.error('Error deleting files from Uploadthing:', error);
+    return false;
+  }
+}
+
+/**
+ * Extract file key from Uploadthing URL
+ * @param url - The Uploadthing URL
+ * @returns File key or null
+ */
+export function extractFileKey(url: string): string | null {
+  if (!url) return null;
+  
+  try {
+    // Uploadthing URLs typically look like: https://utfs.io/f/{key}
+    const match = url.match(/\/f\/([^/?]+)/);
+    return match ? match[1] : null;
+  } catch (error) {
+    logger.warn('Error extracting file key from URL:', url, error);
+    return null;
+  }
+}
+
+/**
+ * Delete files from Uploadthing by their URLs
+ * @param urls - Array of Uploadthing URLs
+ * @returns Success status
+ */
+export async function deleteFilesByUrls(urls: string[]): Promise<boolean> {
+  const fileKeys = urls
+    .map(url => extractFileKey(url))
+    .filter(key => key !== null) as string[];
+  
+  if (fileKeys.length === 0) {
+    return true;
+  }
+  
+  return await deleteFiles(fileKeys);
+}
+
+/**
  * Generate a unique filename with timestamp
  */
 export function generateUniqueFilename(originalName: string, prefix?: string): string {

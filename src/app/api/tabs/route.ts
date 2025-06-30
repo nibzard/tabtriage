@@ -7,6 +7,7 @@ import { updateTabEmbedding, updateTabEmbeddingWithContent } from '@/services/ji
 import { ensureUserExists } from '@/utils/ensure-user';
 import { captureScreenshots } from '@/services/screenshotService';
 import { getCurrentUserId as getUser } from '@/utils/get-current-user';
+import { deleteFilesByUrls } from '@/services/uploadthingService';
 
 // Simple session management (replace with proper auth later)
 async function getCurrentUserId(request?: Request): Promise<string> {
@@ -229,6 +230,48 @@ export async function DELETE(request: Request) {
     
     if (!tabId) {
       return NextResponse.json({ error: 'Tab ID required' }, { status: 400 });
+    }
+    
+    // First, get the tab to retrieve image URLs
+    const tabToDelete = await db
+      .select({
+        thumbnailUrl: tabs.thumbnailUrl,
+        screenshotUrl: tabs.screenshotUrl,
+        fullScreenshotUrl: tabs.fullScreenshotUrl
+      })
+      .from(tabs)
+      .where(and(
+        eq(tabs.id, tabId),
+        eq(tabs.userId, userId)
+      ))
+      .limit(1);
+    
+    if (tabToDelete.length === 0) {
+      return NextResponse.json({ error: 'Tab not found' }, { status: 404 });
+    }
+    
+    // Collect Uploadthing URLs for deletion
+    const uploadthingUrls: string[] = [];
+    const tab = tabToDelete[0];
+    if (tab.thumbnailUrl?.includes('utfs.io')) {
+      uploadthingUrls.push(tab.thumbnailUrl);
+    }
+    if (tab.screenshotUrl?.includes('utfs.io')) {
+      uploadthingUrls.push(tab.screenshotUrl);
+    }
+    if (tab.fullScreenshotUrl?.includes('utfs.io')) {
+      uploadthingUrls.push(tab.fullScreenshotUrl);
+    }
+    
+    // Delete images from Uploadthing
+    if (uploadthingUrls.length > 0) {
+      try {
+        await deleteFilesByUrls(uploadthingUrls);
+        logger.info(`Deleted ${uploadthingUrls.length} images from Uploadthing for tab ${tabId}`);
+      } catch (error) {
+        logger.error(`Error deleting images for tab ${tabId}:`, error);
+        // Continue with database deletion even if image deletion fails
+      }
     }
     
     // Delete related records first (foreign key constraints)

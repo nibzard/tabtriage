@@ -4,7 +4,7 @@ import { tabs } from '@/db/schema';
 import { eq, inArray, and } from 'drizzle-orm';
 import { logger } from '@/utils/logger';
 import { captureScreenshots } from '@/services/screenshotService';
-import { fetchPageContent } from '@/services/pageContentService';
+import { extractPageContent } from '@/services/contentExtractionService';
 import { generateSummaryWithAI } from '@/services/openaiService';
 import { categorizeTabWithAI } from '@/services/aiCategorizationService';
 import { updateTabEmbeddingWithContent } from '@/services/jinaEmbeddingService';
@@ -112,23 +112,29 @@ export async function POST(request: Request) {
           // Step 2: AI processing (summary, categorization, tags)
           if (processType === 'ai' || processType === 'full') {
             try {
-              logger.debug(`Fetching content for tab ${tab.id}: ${tab.url}`);
-              const pageContent = await fetchPageContent(tab.url);
+              logger.debug(`Extracting content for tab ${tab.id}: ${tab.url}`);
+              const extractedContent = await extractPageContent(tab.url);
               
-              if (pageContent) {
+              if (extractedContent) {
+                // Update the title with the extracted page title if available
+                if (extractedContent.title && extractedContent.title.trim()) {
+                  updates.title = extractedContent.title.substring(0, 255);
+                  logger.info(`Updated title for tab ${tab.id}: ${extractedContent.title}`);
+                }
+                
                 // Generate AI summary and tags with retry
                 const { summary, tags: generatedTags } = await TabImportRetryService.retryAI(
-                  () => generateSummaryWithAI(tab.url, pageContent)
+                  () => generateSummaryWithAI(tab.url, extractedContent.content)
                 );
                 
                 // Categorize the tab with retry
                 const category = await TabImportRetryService.retryAI(
-                  () => categorizeTabWithAI(tab.url, pageContent)
+                  () => categorizeTabWithAI(tab.url, extractedContent.content)
                 );
                 
                 updates.summary = summary;
                 updates.category = category;
-                updates.content = pageContent.substring(0, 10000); // Store first 10k chars
+                updates.content = extractedContent.content.substring(0, 10000); // Store first 10k chars
                 result.updates!.ai = true;
                 
                 logger.info(`AI processing completed for tab ${tab.id}`);
@@ -144,7 +150,7 @@ export async function POST(request: Request) {
             try {
               await updateTabEmbeddingWithContent(
                 tab.id,
-                tab.title || '',
+                updates.title || tab.title || '',
                 updates.summary || tab.summary || '',
                 tab.url,
                 'retrieval.passage'

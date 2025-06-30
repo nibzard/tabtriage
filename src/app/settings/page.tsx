@@ -460,7 +460,8 @@ export default function SettingsPage() {
                 Clear All Data
               </h3>
               <p className="text-sm text-red-700 dark:text-red-300 mb-4">
-                This will permanently delete all your tabs, folders, and settings. This action cannot be undone.
+                This will permanently delete all your tabs, folders, settings, and uploaded images (screenshots). 
+                All files stored in cloud storage will also be removed. This action cannot be undone.
               </p>
               
               {!showDeleteConfirm ? (

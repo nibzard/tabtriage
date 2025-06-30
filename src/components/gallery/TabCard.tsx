@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, memo } from 'react'
 import { motion, PanInfo, useAnimation } from 'framer-motion'
-import { Heart, Trash2, Folder, MoreVertical, Check, X, ExternalLink, FolderPlus, RefreshCw } from 'lucide-react'
+import { Heart, Trash2, Folder, MoreVertical, Check, X, ExternalLink, FolderPlus, RefreshCw, Edit } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -21,6 +21,7 @@ import { logger } from '@/utils/logger'
 import { HighlightedText, SearchSnippet } from '@/components/ui/HighlightedText'
 import { ScreenshotPreviewModal } from '@/components/ui/screenshot-preview-modal'
 import { Tooltip } from '@/components/ui/tooltip'
+import { EditTabModal } from '@/components/ui/edit-tab-modal'
 
 interface TabCardProps {
   tab: Tab
@@ -57,11 +58,12 @@ const TabCard = memo(function TabCard({
   const [dragDirection, setDragDirection] = useState<'left' | 'right' | null>(null)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
   const [isRegenerating, setIsRegenerating] = useState(false)
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isClient, setIsClient] = useState(false)
   const controls = useAnimation()
   const constraintsRef = useRef(null)
   
-  const { keepTab, discardTab, deleteTab } = useTabs()
+  const { keepTab, discardTab, deleteTab, updateTab } = useTabs()
   const { isTabSelected, toggleTabSelection } = useBulkActions()
   const { folders, createFolder } = useFoldersContextSafe()
   
@@ -141,6 +143,16 @@ const TabCard = memo(function TabCard({
       // You could add a toast notification here
     } finally {
       setIsRegenerating(false)
+    }
+  }
+
+  const handleEditSave = async (updates: Partial<Tab>) => {
+    try {
+      await updateTab(tab.id, updates)
+      logger.info('Tab updated successfully', updates)
+    } catch (error) {
+      logger.error('Error updating tab:', error)
+      throw error
     }
   }
 
@@ -282,6 +294,12 @@ const TabCard = memo(function TabCard({
                           </a>
                         </DropdownMenuItem>
                         <DropdownMenuItem 
+                          onClick={(e) => { e.stopPropagation(); setIsEditModalOpen(true) }}
+                        >
+                          <Edit className="h-4 w-4 mr-2" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
                           onClick={(e) => { e.stopPropagation(); handleRegenerate() }}
                           disabled={isRegenerating}
                         >
@@ -346,6 +364,14 @@ const TabCard = memo(function TabCard({
             url={tab.url} 
           />
         )}
+        
+        {/* Edit modal for list view */}
+        <EditTabModal
+          tab={tab}
+          isOpen={isEditModalOpen}
+          onClose={() => setIsEditModalOpen(false)}
+          onSave={handleEditSave}
+        />
       </div>
     )
   }
@@ -426,6 +452,12 @@ const TabCard = memo(function TabCard({
                         <ExternalLink className="h-4 w-4 mr-2" />
                         Open Tab
                       </a>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem 
+                      onClick={(e) => { e.stopPropagation(); setIsEditModalOpen(true) }}
+                    >
+                      <Edit className="h-4 w-4 mr-2" />
+                      Edit
                     </DropdownMenuItem>
                     <DropdownMenuItem 
                       onClick={(e) => { e.stopPropagation(); handleRegenerate() }}
@@ -571,6 +603,14 @@ const TabCard = memo(function TabCard({
           tab={tab}
         />
       )}
+      
+      {/* Edit modal for card view */}
+      <EditTabModal
+        tab={tab}
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        onSave={handleEditSave}
+      />
     </div>
   )
 })

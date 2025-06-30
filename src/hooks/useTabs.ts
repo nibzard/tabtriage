@@ -114,7 +114,7 @@ export function useTabs() {
   }
 
   const assignToFolder = (tabId: string, folderId: string) => {
-    updateTab(tabId, { folderId })
+    updateTab(tabId, { folderId, status: 'kept' })
   }
 
   const deleteAllDiscarded = () => {

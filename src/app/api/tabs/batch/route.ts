@@ -131,7 +131,7 @@ export async function POST(request: Request) {
                 id: tabId,
                 userId,
                 folderId: tabInput.folderId || null,
-                title: (tabInput.title || domain).substring(0, 255),
+                title: (tabInput.title || `Loading: ${domain}`).substring(0, 255),
                 url: finalUrl.substring(0, 2048),
                 domain: domain.substring(0, 255),
                 dateAdded: tabInput.dateAdded || now,
