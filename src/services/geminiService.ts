@@ -38,7 +38,8 @@ Please format your response as JSON with exactly these fields:
           
           const response = await geminiService.enqueue(async () => {
             logger.debug(`Making rate-limited Gemini API call for: ${url}`)
-            return fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent', {
+            const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite-preview-06-17'
+            return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',

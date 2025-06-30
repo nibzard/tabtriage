@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm'
 import { logger } from '@/utils/logger'
 import { getCurrentUserId as getUser } from '@/utils/get-current-user'
 import { ensureUserExists } from '@/utils/ensure-user'
-import { deleteFilesByUrls } from '@/services/uploadthingService'
+import { deleteFilesByUrls, listFiles, deleteFiles } from '@/services/uploadthingService'
 
 // Simple session management (replace with proper auth later)
 async function getCurrentUserId(request?: Request): Promise<string> {
@@ -48,20 +48,44 @@ export async function DELETE(request: NextRequest) {
     
     // Delete images from Uploadthing before deleting database records
     let deletedImages = 0
+    
+    // Method 1: Delete images referenced in database
     if (uploadthingUrls.length > 0) {
-      logger.info(`Deleting ${uploadthingUrls.length} images from Uploadthing`)
+      logger.info(`Deleting ${uploadthingUrls.length} database-referenced images from Uploadthing`)
       try {
         const deleteSuccess = await deleteFilesByUrls(uploadthingUrls)
         if (deleteSuccess) {
           deletedImages = uploadthingUrls.length
-          logger.info(`Successfully deleted ${deletedImages} images from Uploadthing`)
+          logger.info(`Successfully deleted ${deletedImages} database-referenced images from Uploadthing`)
         } else {
-          logger.warn('Some images may not have been deleted from Uploadthing')
+          logger.warn('Some database-referenced images may not have been deleted from Uploadthing')
         }
       } catch (error) {
-        logger.error('Error deleting images from Uploadthing:', error)
-        // Continue with database deletion even if image deletion fails
+        logger.error('Error deleting database-referenced images from Uploadthing:', error)
+        // Continue with orphaned file cleanup
       }
+    }
+    
+    // Method 2: Clean up ALL orphaned files in UploadThing (nuclear option for clear-all)
+    try {
+      logger.info(`Checking for orphaned files in UploadThing...`)
+      const allFiles = await listFiles()
+      if (allFiles.length > 0) {
+        logger.info(`Found ${allFiles.length} total files in UploadThing, deleting all...`)
+        const allFileKeys = allFiles.map(file => file.key)
+        const cleanupSuccess = await deleteFiles(allFileKeys)
+        if (cleanupSuccess) {
+          deletedImages += allFiles.length
+          logger.info(`Successfully deleted ${allFiles.length} orphaned files from UploadThing`)
+        } else {
+          logger.warn('Some orphaned files may not have been deleted from UploadThing')
+        }
+      } else {
+        logger.info('No orphaned files found in UploadThing')
+      }
+    } catch (error) {
+      logger.error('Error cleaning up orphaned files from UploadThing:', error)
+      // Continue with database deletion even if cleanup fails
     }
     
     // Delete all user data in the correct order (respecting foreign key constraints)

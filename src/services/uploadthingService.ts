@@ -238,6 +238,23 @@ export async function deleteFilesByUrls(urls: string[]): Promise<boolean> {
 }
 
 /**
+ * List files from UploadThing (for debugging purposes)
+ * @returns Array of file information
+ */
+export async function listFiles(): Promise<any[]> {
+  try {
+    const utapi = new UTApi();
+    const response = await utapi.listFiles();
+    
+    logger.info(`Found ${response.files.length} files in UploadThing`);
+    return response.files;
+  } catch (error) {
+    logger.error('Error listing files from UploadThing:', error);
+    return [];
+  }
+}
+
+/**
  * Generate a unique filename with timestamp
  */
 export function generateUniqueFilename(originalName: string, prefix?: string): string {
